@@ -76,3 +76,4 @@ fn main() {
 
     println!("cargo:rustc-link-search=/Users/pingfanh/project/lnmai-core-ffi/lib");
 }
+ 
