@@ -1,0 +1,35 @@
+name = "lnmai-core"
+version = "0.1.0"
+defaultTargets = ["lnmai-core", "Proofs"]
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.30.0-rc2"
+
+
+[[lean_lib]]
+name = "LnmaiCore"
+
+[[lean_lib]]
+name = "Proofs"
+
+[[lean_exe]]
+name = "lnmai-core"
+root = "Main"
+
+[[lean_exe]]
+name = "real-chart-verification"
+root = "Apps.RealChartVerification"
+
+[[lean_exe]]
+name = "real-chart-benchmark"
+root = "Apps.RealChartBenchmark"
+
+[[lean_exe]]
+name = "real-chart-verification-100524"
+root = "Apps.RealChartVerification100524"
+
+[[lean_exe]]
+name = "simai-parser-cli"
+root = "Apps.SimaiParserCli"
