@@ -1,79 +1,305 @@
+use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
-    //println!("cargo:rustc-link-lib=static=c++");
-    let lean_project = PathBuf::from("/Users/pingfanh/project/lnmai-core-ffi");
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"));
+    let lean_project = manifest_dir.join("lnmai-core");
 
-    // let status = Command::new("lake")
-    //     .arg("build")
-    //     .current_dir(&lean_project)
-    //     .status()
-    //     .expect("failed to run lake build");
-    // if !status.success() {
-    //     panic!("lake build failed");
-    // }
+    println!("cargo:rerun-if-changed={}", lean_project.join("lakefile.toml").display());
+    println!("cargo:rerun-if-changed={}", lean_project.join("lean-toolchain").display());
+    println!("cargo:rerun-if-changed={}", lean_project.join("LnmaiCore").display());
+    println!("cargo:rerun-if-changed={}", lean_project.join("include/lnmai_ffi.h").display());
+    println!("cargo:rerun-if-changed={}", lean_project.join("include/lnmai_session.h").display());
 
-    let _lean_include = PathBuf::from("/Users/pingfanh/.elan/toolchains/leanprover--lean4---v4.30.0-rc2/include");
+    run_lake_build(&lean_project);
 
-    // cc::Build::new()
-    //     .file("/Users/pingfanh/project/lnmai-core-ffi/include/lnmai_ffi.h")
-    //     .file("/Users/pingfanh/project/lnmai-core-ffi/include/lnmai_session.h")
-    //     .include(&_lean_include)
-    //     .compile("lean_wrapper");
+    let lake_rsp_path = lean_project.join(".lake/build/bin/lnmai-core.rsp");
+    println!("cargo:rerun-if-changed={}", lake_rsp_path.display());
+    let lake_rsp = fs::read_to_string(&lake_rsp_path).expect("failed to read Lake link response file");
+    let lake_args = parse_rsp(&lake_rsp);
 
-    let lake_rsp = lean_project.join(".lake/build/bin/lnmai-core-ffi.rsp");
+    let resolved = resolve_system_libraries(&lake_args);
 
-    let rsp_content = fs::read_to_string(&lake_rsp)
-        .unwrap_or_else(|e| panic!("failed to read Lake rsp {:?}: {}", lake_rsp, e));
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("missing OUT_DIR"));
+    let linker_rsp_path = out_dir.join("lnmai-link.rsp");
+    let linker_rsp = build_link_rsp(&lake_args, &resolved, &lean_project);
+    fs::write(&linker_rsp_path, linker_rsp).expect("failed to write linker rsp");
 
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    let rsp_path = out_dir.join("link.rsp");
-
-    let mut combined = String::new();
-    let lines: Vec<&str> = rsp_content.lines().collect();
-    let mut i = 0;
-    while i < lines.len() {
-        let line = lines[i].trim();
-        if line == "\"-fuse-ld=lld\"" || line == "-fuse-ld=lld" {
-            i += 1;
-            continue;
-        }
-        if line == "\"--sysroot\"" || line == "--sysroot" {
-            i += 2;
-            continue;
-        }
-        if line.contains("Main.c.o.export") {
-
-            i += 1;
-
-            continue;
-
-        }
-        combined.push_str(lines[i]);
-        combined.push('\n');
-        i += 1;
+    if let Some(parent) = resolved.lean_toolchain_lib_dir.parent() {
+        println!("cargo:rustc-link-search=native={}", parent.display());
     }
-    fs::write(&rsp_path, &combined).expect("failed to write rsp file");
-
-    println!("cargo:rustc-link-arg=@{}", rsp_path.display());
-
-    // let lean_lib = lean_project.join(".lake/build/lib/lean");
-    //
-    // combined.push_str(&format!("-L{}\n", lean_lib.display()));
-    //
-    // combined.push_str("-lleanrt\n");
-    //
-    // combined.push_str("-lleancore\n"); // 很多情况下必须
-    //
-    // combined.push_str("\"-lleanshared\"\n");
-
-    println!("cargo:rerun-if-changed=/Users/pingfanh/project/lnmai-core-ffi/lakefile.toml");
-    println!("cargo:rerun-if-changed=/Users/pingfanh/project/lnmai-core-ffi/LnmaiCore");
-    println!("cargo:rerun-if-changed=/Users/pingfanh/project/lnmai-core-ffi/Proofs");
-    println!("cargo:include=/Users/pingfanh/project/lnmai-core-ffi/include");
-
-    println!("cargo:rustc-link-search=/Users/pingfanh/project/lnmai-core-ffi/lib");
+    println!("cargo:rustc-link-search=native={}", resolved.lean_toolchain_lib_dir.display());
+    println!("cargo:rustc-link-arg=@{}", linker_rsp_path.display());
 }
- 
+
+fn run_lake_build(lean_project: &Path) {
+    let status = Command::new("lake")
+        .args(["build", "LnmaiCore", "LnmaiCore.FFI"])
+        .current_dir(lean_project)
+        .status()
+        .expect("failed to invoke lake");
+    if !status.success() {
+        panic!("lake build failed with status {status}");
+    }
+}
+
+fn parse_rsp(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.trim_matches('"').to_owned())
+        .collect()
+}
+
+fn build_link_rsp(lake_args: &[String], resolved: &ResolvedLibraries, lean_project: &Path) -> String {
+    let mut out = String::new();
+    let mut index = 0;
+    while index < lake_args.len() {
+        let arg = &lake_args[index];
+
+        if is_excluded_object(arg, lean_project) {
+            index += 1;
+            continue;
+        }
+
+        if arg == "-L" {
+            let path = lake_args.get(index + 1).expect("-L without path");
+            out.push_str(&quote_arg("-L"));
+            out.push('\n');
+            out.push_str(&quote_arg(path));
+            out.push('\n');
+            index += 2;
+            continue;
+        }
+
+        if let Some(lib) = arg.strip_prefix("-l") {
+            match lib {
+                "c++" => {
+                    if let Some(path) = &resolved.libcxx {
+                        out.push_str("\"-Wl,-Bdynamic\"\n");
+                        out.push_str(&quote_arg(&path.display().to_string()));
+                        out.push('\n');
+                    } else {
+                        out.push_str(&quote_arg(arg));
+                        out.push('\n');
+                    }
+                }
+                "c++abi" => {
+                    if let Some(path) = &resolved.libcxxabi {
+                        out.push_str("\"-Wl,-Bdynamic\"\n");
+                        out.push_str(&quote_arg(&path.display().to_string()));
+                        out.push('\n');
+                    } else {
+                        out.push_str(&quote_arg(arg));
+                        out.push('\n');
+                    }
+                }
+                "gmp" => {
+                    if let Some(path) = &resolved.gmp {
+                        out.push_str("\"-Wl,-Bdynamic\"\n");
+                        out.push_str(&quote_arg(&path.display().to_string()));
+                        out.push('\n');
+                    } else {
+                        out.push_str(&quote_arg(arg));
+                        out.push('\n');
+                    }
+                }
+                "uv" => {
+                    if let Some(path) = &resolved.uv {
+                        out.push_str("\"-Wl,-Bdynamic\"\n");
+                        out.push_str(&quote_arg(&path.display().to_string()));
+                        out.push('\n');
+                    } else {
+                        out.push_str(&quote_arg(arg));
+                        out.push('\n');
+                    }
+                }
+                _ => {
+                    out.push_str(&quote_arg(arg));
+                    out.push('\n');
+                }
+            }
+            index += 1;
+            continue;
+        }
+
+        out.push_str(&quote_arg(arg));
+        out.push('\n');
+        index += 1;
+    }
+
+    out
+}
+
+fn is_excluded_object(arg: &str, _lean_project: &Path) -> bool {
+    if !arg.ends_with(".c.o.export") {
+        return false;
+    }
+
+    if arg.contains("/.lake/packages/") {
+        return false;
+    }
+
+    let is_main = arg.ends_with("/.lake/build/ir/Main.c.o.export");
+    let is_app = arg.contains("/.lake/build/ir/Apps/");
+
+    is_main || is_app
+}
+
+fn quote_arg(arg: &str) -> String {
+    format!("\"{}\"", arg.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+struct ResolvedLibraries {
+    lean_toolchain_lib_dir: PathBuf,
+    libcxx: Option<PathBuf>,
+    libcxxabi: Option<PathBuf>,
+    gmp: Option<PathBuf>,
+    uv: Option<PathBuf>,
+}
+
+fn resolve_system_libraries(rsp_args: &[String]) -> ResolvedLibraries {
+    let lean_lib_dir = rsp_args
+        .windows(2)
+        .find_map(|window| {
+            if window[0] == "-L" {
+                Some(PathBuf::from(&window[1]))
+            } else {
+                None
+            }
+        })
+        .expect("Lake response file did not contain a lean library search path");
+    let lean_toolchain_lib_dir = lean_lib_dir
+        .parent()
+        .expect("lean lib directory should have a parent")
+        .to_path_buf();
+
+    let library_search_roots = library_search_roots();
+
+    ResolvedLibraries {
+        lean_toolchain_lib_dir: lean_lib_dir,
+        libcxx: find_first_existing(&[
+            lean_toolchain_lib_dir.join("libc++.so"),
+            lean_toolchain_lib_dir.join("libc++.so.1.0"),
+        ]),
+        libcxxabi: find_first_existing(&[
+            lean_toolchain_lib_dir.join("libc++abi.so"),
+            lean_toolchain_lib_dir.join("libc++abi.so.1"),
+            lean_toolchain_lib_dir.join("libc++abi.so.1.0"),
+        ]),
+        gmp: find_library_in_paths("libgmp.so", &library_search_roots)
+            .or_else(|| find_pkg_config_library("gmp"))
+            .or_else(|| find_pkg_config_library("gmpxx")),
+        uv: find_library_in_paths("libuv.so", &library_search_roots)
+            .or_else(|| find_pkg_config_library("libuv")),
+    }
+}
+
+fn find_first_existing(candidates: &[PathBuf]) -> Option<PathBuf> {
+    candidates.iter().find(|path| path.exists()).cloned()
+}
+
+fn find_library_in_paths(prefix: &str, roots: &[PathBuf]) -> Option<PathBuf> {
+    for root in roots {
+        if let Some(found) = find_library_recursive(root, prefix) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn find_library_recursive(root: &Path, prefix: &str) -> Option<PathBuf> {
+    let entries = fs::read_dir(root).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_library_recursive(&path, prefix) {
+                return Some(found);
+            }
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if name == prefix || (name.starts_with(prefix) && name[prefix.len()..].starts_with('.')) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn library_search_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    roots.extend(parse_compiler_library_roots());
+    roots.extend(parse_env_library_roots());
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
+fn parse_compiler_library_roots() -> Vec<PathBuf> {
+    let output = Command::new("cc")
+        .arg("-print-search-dirs")
+        .output()
+        .expect("failed to query compiler search dirs");
+    let stdout = String::from_utf8(output.stdout).expect("compiler search dirs were not valid UTF-8");
+
+    let mut roots = Vec::new();
+    for line in stdout.lines() {
+        let Some(rest) = line.strip_prefix("libraries: =") else {
+            continue;
+        };
+        roots.extend(split_search_path(rest));
+    }
+    roots
+}
+
+fn parse_env_library_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for key in ["LIBRARY_PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"] {
+        let Ok(value) = env::var(key) else {
+            continue;
+        };
+        roots.extend(split_search_path(&value));
+    }
+    roots
+}
+
+fn split_search_path(value: &str) -> Vec<PathBuf> {
+    env::split_paths(value)
+        .filter(|path| path.exists())
+        .collect()
+}
+
+fn find_pkg_config_library(package: &str) -> Option<PathBuf> {
+    let output = Command::new("pkg-config")
+        .args(["--libs-only-L", package])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    for token in stdout.split_whitespace() {
+        let Some(path) = token.strip_prefix("-L") else {
+            continue;
+        };
+        let lib_dir = PathBuf::from(path);
+        if let Some(found) = find_library_recursive(&lib_dir, library_file_name(package)) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn library_file_name(package: &str) -> &'static str {
+    match package {
+        "gmp" | "gmpxx" => "libgmp.so",
+        "libuv" => "libuv.so",
+        _ => unreachable!("unsupported pkg-config package"),
+    }
+}

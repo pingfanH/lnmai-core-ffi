@@ -1,6 +1,7 @@
 pub mod session;
+#[cfg(test)]
 pub mod test;
-use lean_sys::{lean_io_result_is_error,lean_dec_ref,lean_object};
+use lean_sys::{lean_dec_ref, lean_io_result_is_error, lean_object};
 use std::os::raw::c_char;
 
 // #[repr(C)]
@@ -43,14 +44,14 @@ unsafe extern "C" {
 }
 
 pub unsafe fn initialize_lnmai_runtime() -> Result<(), ()> {
-    lean_initialize();
-    let result = initialize_lnmai_x2dcore_LnmaiCore(1);
-    if lean_io_result_is_error(result) {
-        lean_io_result_show_error(result);
-        lean_dec_ref(result);
+    unsafe { lean_initialize() };
+    let result = unsafe { initialize_lnmai_x2dcore_LnmaiCore(1) };
+    if unsafe { lean_io_result_is_error(result) } {
+        unsafe { lean_io_result_show_error(result) };
+        unsafe { lean_dec_ref(result) };
         Err(())
     } else {
-        lean_dec_ref(result);
+        unsafe { lean_dec_ref(result) };
         Ok(())
     }
 }

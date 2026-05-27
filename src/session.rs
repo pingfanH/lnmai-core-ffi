@@ -1,7 +1,7 @@
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 use crate::*;
-use lean_sys::{lean_string_cstr,lean_object};
+use lean_sys::{lean_io_result_take_value, lean_object, lean_string_cstr};
 pub struct Empty;
 pub struct Loaded;
 
@@ -30,9 +30,10 @@ impl<State> Session<State> {
 
 fn into_string(result: *mut lean_object) -> String {
     unsafe {
-        let ptr = lean_string_cstr(result);
+        let value_obj = lean_io_result_take_value(result);
+        let ptr = lean_string_cstr(value_obj);
         let value = CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned();
-        //lean_dec_ref(result);
+        lean_sys::lean_dec_ref(value_obj);
         value
     }
 }
@@ -49,7 +50,12 @@ fn is_ok(json: &str) -> bool {
 fn extract_handle(json: &str) -> Option<u64> {
     let needle = "\"handle\":";
     let start = json.find(needle)? + needle.len();
-    let rest = &json[start..];
+    let rest = json[start..].trim_start();
+    let rest = if let Some(stripped) = rest.strip_prefix('"') {
+        stripped
+    } else {
+        rest
+    };
     let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
     digits.parse().ok()
 }
@@ -63,7 +69,7 @@ fn ok_or_error(json: String) -> Result<FfiEnvelope> {
 }
 
 pub unsafe fn initialize_runtime() -> std::result::Result<(), ()> {
-    initialize_lnmai_runtime()
+    unsafe { initialize_lnmai_runtime() }
 }
 
 impl Session<Empty> {
