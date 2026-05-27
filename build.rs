@@ -79,7 +79,8 @@ fn build_link_rsp(lake_args: &[String], resolved: &ResolvedLibraries, lean_proje
             match lib {
                 "c++" => {
                     if let Some(path) = &resolved.libcxx {
-                        out.push_str("\"-Wl,-Bdynamic\"\n");
+                        out.push_str(&quote_arg(dynamic_linker_switch()));
+                        out.push('\n');
                         out.push_str(&quote_arg(&path.display().to_string()));
                         out.push('\n');
                     } else {
@@ -89,7 +90,8 @@ fn build_link_rsp(lake_args: &[String], resolved: &ResolvedLibraries, lean_proje
                 }
                 "c++abi" => {
                     if let Some(path) = &resolved.libcxxabi {
-                        out.push_str("\"-Wl,-Bdynamic\"\n");
+                        out.push_str(&quote_arg(dynamic_linker_switch()));
+                        out.push('\n');
                         out.push_str(&quote_arg(&path.display().to_string()));
                         out.push('\n');
                     } else {
@@ -99,7 +101,8 @@ fn build_link_rsp(lake_args: &[String], resolved: &ResolvedLibraries, lean_proje
                 }
                 "gmp" => {
                     if let Some(path) = &resolved.gmp {
-                        out.push_str("\"-Wl,-Bdynamic\"\n");
+                        out.push_str(&quote_arg(dynamic_linker_switch()));
+                        out.push('\n');
                         out.push_str(&quote_arg(&path.display().to_string()));
                         out.push('\n');
                     } else {
@@ -109,7 +112,8 @@ fn build_link_rsp(lake_args: &[String], resolved: &ResolvedLibraries, lean_proje
                 }
                 "uv" => {
                     if let Some(path) = &resolved.uv {
-                        out.push_str("\"-Wl,-Bdynamic\"\n");
+                        out.push_str(&quote_arg(dynamic_linker_switch()));
+                        out.push('\n');
                         out.push_str(&quote_arg(&path.display().to_string()));
                         out.push('\n');
                     } else {
@@ -178,22 +182,20 @@ fn resolve_system_libraries(rsp_args: &[String]) -> ResolvedLibraries {
         .to_path_buf();
 
     let library_search_roots = library_search_roots();
+    let dynamic_suffixes = dynamic_library_suffixes();
+    let libcxx_candidates = library_candidates("libc++", &dynamic_suffixes);
+    let libcxxabi_candidates = library_candidates("libc++abi", &dynamic_suffixes);
+    let gmp_candidates = library_candidates("libgmp", &dynamic_suffixes);
+    let uv_candidates = library_candidates("libuv", &dynamic_suffixes);
 
     ResolvedLibraries {
         lean_toolchain_lib_dir: lean_lib_dir,
-        libcxx: find_first_existing(&[
-            lean_toolchain_lib_dir.join("libc++.so"),
-            lean_toolchain_lib_dir.join("libc++.so.1.0"),
-        ]),
-        libcxxabi: find_first_existing(&[
-            lean_toolchain_lib_dir.join("libc++abi.so"),
-            lean_toolchain_lib_dir.join("libc++abi.so.1"),
-            lean_toolchain_lib_dir.join("libc++abi.so.1.0"),
-        ]),
-        gmp: find_library_in_paths("libgmp.so", &library_search_roots)
+        libcxx: find_joined_existing(&lean_toolchain_lib_dir, &libcxx_candidates),
+        libcxxabi: find_joined_existing(&lean_toolchain_lib_dir, &libcxxabi_candidates),
+        gmp: find_library_in_paths(&gmp_candidates, &library_search_roots)
             .or_else(|| find_pkg_config_library("gmp"))
             .or_else(|| find_pkg_config_library("gmpxx")),
-        uv: find_library_in_paths("libuv.so", &library_search_roots)
+        uv: find_library_in_paths(&uv_candidates, &library_search_roots)
             .or_else(|| find_pkg_config_library("libuv")),
     }
 }
@@ -202,21 +204,26 @@ fn find_first_existing(candidates: &[PathBuf]) -> Option<PathBuf> {
     candidates.iter().find(|path| path.exists()).cloned()
 }
 
-fn find_library_in_paths(prefix: &str, roots: &[PathBuf]) -> Option<PathBuf> {
+fn find_joined_existing(root: &Path, names: &[String]) -> Option<PathBuf> {
+    let candidates = names.iter().map(|name| root.join(name)).collect::<Vec<_>>();
+    find_first_existing(&candidates)
+}
+
+fn find_library_in_paths(candidates: &[String], roots: &[PathBuf]) -> Option<PathBuf> {
     for root in roots {
-        if let Some(found) = find_library_recursive(root, prefix) {
+        if let Some(found) = find_library_recursive(root, candidates) {
             return Some(found);
         }
     }
     None
 }
 
-fn find_library_recursive(root: &Path, prefix: &str) -> Option<PathBuf> {
+fn find_library_recursive(root: &Path, candidates: &[String]) -> Option<PathBuf> {
     let entries = fs::read_dir(root).ok()?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if let Some(found) = find_library_recursive(&path, prefix) {
+            if let Some(found) = find_library_recursive(&path, candidates) {
                 return Some(found);
             }
             continue;
@@ -224,7 +231,7 @@ fn find_library_recursive(root: &Path, prefix: &str) -> Option<PathBuf> {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if name == prefix || (name.starts_with(prefix) && name[prefix.len()..].starts_with('.')) {
+        if candidates.iter().any(|candidate| name == candidate || name.starts_with(&format!("{candidate}."))) {
             return Some(path);
         }
     }
@@ -284,22 +291,43 @@ fn find_pkg_config_library(package: &str) -> Option<PathBuf> {
     }
 
     let stdout = String::from_utf8(output.stdout).ok()?;
+    let candidates = library_candidates(library_base_name(package), &dynamic_library_suffixes());
     for token in stdout.split_whitespace() {
         let Some(path) = token.strip_prefix("-L") else {
             continue;
         };
         let lib_dir = PathBuf::from(path);
-        if let Some(found) = find_library_recursive(&lib_dir, library_file_name(package)) {
+        if let Some(found) = find_library_recursive(&lib_dir, &candidates) {
             return Some(found);
         }
     }
     None
 }
 
-fn library_file_name(package: &str) -> &'static str {
+fn library_base_name(package: &str) -> &'static str {
     match package {
-        "gmp" | "gmpxx" => "libgmp.so",
-        "libuv" => "libuv.so",
+        "gmp" | "gmpxx" => "libgmp",
+        "libuv" => "libuv",
         _ => unreachable!("unsupported pkg-config package"),
+    }
+}
+
+fn library_candidates(base: &str, suffixes: &[&str]) -> Vec<String> {
+    suffixes.iter().map(|suffix| format!("{base}{suffix}")).collect()
+}
+
+fn dynamic_library_suffixes() -> Vec<&'static str> {
+    if cfg!(target_os = "macos") {
+        vec![".dylib", ".so", ".so.1", ".so.1.0"]
+    } else {
+        vec![".so", ".so.1", ".so.1.0", ".dylib"]
+    }
+}
+
+fn dynamic_linker_switch() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "-Wl,-search_paths_first"
+    } else {
+        "-Wl,-Bdynamic"
     }
 }
