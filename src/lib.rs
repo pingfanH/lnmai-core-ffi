@@ -1,6 +1,8 @@
 pub mod session;
 #[cfg(test)]
 pub mod test;
+pub mod build;
+
 use lean_sys::{lean_dec_ref, lean_io_result_is_error, lean_object};
 use std::os::raw::c_char;
 

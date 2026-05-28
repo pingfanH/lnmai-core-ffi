@@ -3,8 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn main() {
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"));
+pub fn build(path:PathBuf) {
+    let manifest_dir =path;
     let lean_project = manifest_dir.join("lnmai-core");
 
 

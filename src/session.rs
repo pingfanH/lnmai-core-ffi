@@ -27,12 +27,17 @@ impl<State> Session<State> {
         self.handle
     }
 }
+// impl<Loaded> Drop for Session<Loaded> {
+//     fn drop(&mut self) {
+//         let _ = unsafe { into_string(lnmai_unload_chart_from_session(self.handle)) };
+//     }
+// }
 
 fn into_string(result: *mut lean_object) -> String {
     unsafe {
         let value_obj = lean_io_result_take_value(result);
         let ptr = lean_string_cstr(value_obj);
-        let value = CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned();
+        let value = CStr::from_ptr(ptr as *const std::ffi::c_char).to_string_lossy().into_owned();
         lean_sys::lean_dec_ref(value_obj);
         value
     }
