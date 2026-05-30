@@ -1,6 +1,74 @@
 use serde_json::json;
 use crate::session::*;
 use crate::types::*;
+use crate::{lean_mk_string, lnmai_parse_frontend_chart_json, lnmai_parse_frontend_inspection_chart_json, lnmai_parse_frontend_semantic_chart_json, lnmai_parse_lowered_chart_json, lnmai_parse_normalized_chart_json};
+use lean_sys::{lean_object, lean_string_cstr};
+use std::ffi::{CStr, CString};
+use std::sync::{Mutex, OnceLock};
+
+fn test_guard() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|poison| poison.into_inner())
+}
+
+fn ensure_runtime() {
+    static INIT: OnceLock<()> = OnceLock::new();
+    INIT.get_or_init(|| unsafe { initialize_runtime().unwrap() });
+}
+
+fn call_string_ffi(f: impl FnOnce(*mut lean_object) -> *mut lean_object, input: &str) -> String {
+    let c = CString::new(input).unwrap();
+    let content = unsafe { lean_mk_string(c.as_ptr()) };
+    let result = f(content);
+    unsafe {
+        let ptr = lean_string_cstr(result);
+        let value = CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned();
+        lean_sys::lean_dec_ref(result);
+        value
+    }
+}
+
+#[test]
+fn parser_outputs_roundtrip_into_rust_types() {
+    let _guard = test_guard();
+    let chart_text = include_str!("../assets/24_Sun Dance/maidata.txt");
+    ensure_runtime();
+
+    let frontend_json = call_string_ffi(
+        |content| unsafe { lnmai_parse_frontend_chart_json(content, 6) },
+        chart_text,
+    );
+    let frontend: crate::types::FfiEnvelope<FrontendChartResult> = serde_json::from_str(&frontend_json).unwrap();
+    assert!(frontend.ok);
+
+    let semantic_json = call_string_ffi(
+        |content| unsafe { lnmai_parse_frontend_semantic_chart_json(content, 6) },
+        chart_text,
+    );
+    let semantic: crate::types::FfiEnvelope<FrontendSemanticChart> = serde_json::from_str(&semantic_json).unwrap();
+    assert!(semantic.ok);
+
+    let inspection_json = call_string_ffi(
+        |content| unsafe { lnmai_parse_frontend_inspection_chart_json(content, 6) },
+        chart_text,
+    );
+    let inspection: crate::types::FfiEnvelope<FrontendChartInspection> = serde_json::from_str(&inspection_json).unwrap();
+    assert!(inspection.ok);
+
+    let normalized_json = call_string_ffi(
+        |content| unsafe { lnmai_parse_normalized_chart_json(content, 6) },
+        chart_text,
+    );
+    let normalized: crate::types::FfiEnvelope<NormalizedChart> = serde_json::from_str(&normalized_json).unwrap();
+    assert!(normalized.ok);
+
+    let lowered_json = call_string_ffi(
+        |content| unsafe { lnmai_parse_lowered_chart_json(content, 6) },
+        chart_text,
+    );
+    let lowered: crate::types::FfiEnvelope<ChartSpec> = serde_json::from_str(&lowered_json).unwrap();
+    assert!(lowered.ok);
+}
 
 /// Demonstrates how slide judgment data flows from Lean to Rust.
 ///
@@ -22,10 +90,17 @@ use crate::types::*;
 ///   chart's slide data.
 #[test]
 fn slide_judgment_parse_instance() {
+    let _guard = test_guard();
     let chart_text = include_str!("../assets/24_Sun Dance/maidata.txt");
-    unsafe { initialize_runtime().unwrap() };
+    ensure_runtime();
     let empty = Session::<Empty>::create().unwrap();
     let (mut loaded, _load_info) = empty.load_chart_text(chart_text, 6).unwrap();
+
+    let lowered_chart: ChartSpec = loaded.get_lowered_chart_json().unwrap().decode_result().unwrap();
+    assert!(!lowered_chart.slides.is_empty());
+
+    let state: GameState = loaded.get_state_json().unwrap().decode_result().unwrap();
+    assert_eq!(state.current_time, 0);
 
     // Step 1: Advance at time 0 with no input.
     // This lets notes that start at t=0 get processed.
@@ -42,17 +117,15 @@ fn slide_judgment_parse_instance() {
 
     // Step 2: Simulate a slide being touched.
     // Hold sensor A1 at t=500ms (500000 microseconds) to start progressing a slide.
-    let step1 = loaded.advance_frame_light(
-        &json!({
-            "currentTime": 500_000,
-            "events": [{
-                "tag": "sensorHold",
-                "tp": 500_000,
-                "area": "A1",
-                "isDown": true
-            }]
-        }).to_string(),
-    ).unwrap();
+    let batch = TimedInputBatch {
+        current_time: 500_000,
+        events: vec![TimedInputEvent::SensorHold {
+            tp: 500_000,
+            area: SensorArea::A1,
+            is_down: true,
+        }],
+    };
+    let step1 = loaded.advance_frame_light(&serde_json::to_string(&batch).unwrap()).unwrap();
 
     let envelope1: FfiResult = serde_json::from_str(&step1.json).unwrap();
     let result1: RuntimeStepLightResult =
