@@ -3,8 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn main() {
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"));
+pub fn build(path:PathBuf) {
+    let manifest_dir =path;
     let lean_project = manifest_dir.join("lnmai-core");
 
 
@@ -33,22 +33,33 @@ pub fn main() {
     }
     println!("cargo:rustc-link-search=native={}", resolved.lean_toolchain_lib_dir.display());
     println!("cargo:rustc-link-arg=@{}", linker_rsp_path.display());
-    if cfg!(target_os = "macos") {
-        println!("cargo:rustc-link-arg=-Wl,-syslibroot");
-        println!("cargo:rustc-link-arg={}", sdk_path());
+    println!("cargo:rustc-link-arg=-Wl,-syslibroot");
+    fn sdk_path() -> String {
+
+        let output = Command::new("xcrun")
+
+            .args(["--sdk", "macosx", "--show-sdk-path"])
+
+            .output()
+
+            .expect("failed to query sdk path");
+
+        String::from_utf8(output.stdout)
+
+            .unwrap()
+
+            .trim()
+
+            .to_string()
+
     }
-}
+    println!(
 
-fn sdk_path() -> String {
-    let output = Command::new("xcrun")
-        .args(["--sdk", "macosx", "--show-sdk-path"])
-        .output()
-        .expect("failed to query sdk path");
+        "cargo:rustc-link-arg={}",
 
-    String::from_utf8(output.stdout)
-        .unwrap()
-        .trim()
-        .to_string()
+        sdk_path()
+
+    );
 }
 
 fn run_lake_build(lean_project: &Path) {
