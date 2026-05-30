@@ -284,7 +284,7 @@ pub struct RawNoteToken {
     pub star_wait: Option<Duration>,
     #[serde(default)]
     pub is_break: bool,
-    #[serde(default)]
+    #[serde(rename = "isEX", default)]
     pub is_ex: bool,
     #[serde(default)]
     pub is_hanabi: bool,
@@ -359,7 +359,7 @@ pub struct NormalizedTap {
     pub slot: OuterSlot,
     #[serde(default)]
     pub is_break: bool,
-    #[serde(default)]
+    #[serde(rename = "isEX", default)]
     pub is_ex: bool,
     #[serde(default)]
     pub is_hanabi: bool,
@@ -376,7 +376,7 @@ pub struct NormalizedHold {
     pub length: Duration,
     #[serde(default)]
     pub is_break: bool,
-    #[serde(default)]
+    #[serde(rename = "isEX", default)]
     pub is_ex: bool,
     #[serde(default)]
     pub is_hanabi: bool,
@@ -403,7 +403,7 @@ pub struct NormalizedTouchHold {
     pub length: Duration,
     #[serde(default)]
     pub is_break: bool,
-    #[serde(default)]
+    #[serde(rename = "isEX", default)]
     pub is_ex: bool,
     #[serde(default)]
     pub is_hanabi: bool,
@@ -426,7 +426,7 @@ pub struct NormalizedSlide {
     pub judge_at: Option<TimePoint>,
     #[serde(default)]
     pub is_break: bool,
-    #[serde(default)]
+    #[serde(rename = "isEX", default)]
     pub is_ex: bool,
     #[serde(default)]
     pub is_hanabi: bool,
@@ -501,7 +501,7 @@ pub struct TapChartNote {
     pub slot: OuterSlot,
     #[serde(default)]
     pub is_break: bool,
-    #[serde(default)]
+    #[serde(rename = "isEX", default)]
     pub is_ex: bool,
     pub button_queue_index: u64,
     pub note_index: u64,
@@ -515,7 +515,7 @@ pub struct HoldChartNote {
     pub length: Duration,
     #[serde(default)]
     pub is_break: bool,
-    #[serde(default)]
+    #[serde(rename = "isEX", default)]
     pub is_ex: bool,
     #[serde(default)]
     pub is_touch: bool,
@@ -552,7 +552,7 @@ pub struct TouchHoldChartNote {
     pub length: Duration,
     #[serde(default)]
     pub is_break: bool,
-    #[serde(default)]
+    #[serde(rename = "isEX", default)]
     pub is_ex: bool,
     pub touch_queue_index: u64,
     #[serde(default)]
@@ -594,7 +594,7 @@ pub struct SlideChartNote {
     pub judge_at: Option<TimePoint>,
     #[serde(default)]
     pub is_break: bool,
-    #[serde(default)]
+    #[serde(rename = "isEX", default)]
     pub is_ex: bool,
     pub note_index: u64,
     pub judge_queues: Vec<Vec<SlideAreaSpec>>,
@@ -659,7 +659,7 @@ pub struct CommonNoteParams {
     pub judge_offset: Duration,
     #[serde(default)]
     pub is_break: bool,
-    #[serde(default)]
+    #[serde(rename = "isEX", default)]
     pub is_ex: bool,
     pub note_index: u64,
 }

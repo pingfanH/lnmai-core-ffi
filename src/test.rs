@@ -1,3 +1,4 @@
+use crate::api;
 use serde_json::json;
 use crate::session::*;
 use crate::types::*;
@@ -68,6 +69,26 @@ fn parser_outputs_roundtrip_into_rust_types() {
     );
     let lowered: crate::types::FfiEnvelope<ChartSpec> = serde_json::from_str(&lowered_json).unwrap();
     assert!(lowered.ok);
+}
+
+#[test]
+fn typed_api_helpers_roundtrip_runtime_structures() {
+    let _guard = test_guard();
+    let chart_text = include_str!("../assets/24_Sun Dance/maidata.txt");
+    ensure_runtime();
+
+    let lowered = api::parse_lowered_chart(chart_text, 6).unwrap();
+    assert!(!lowered.slides.is_empty());
+
+    let state = api::build_game_state(&lowered).unwrap();
+    assert_eq!(state.current_time, 0);
+
+    let batch = TimedInputBatch {
+        current_time: 0,
+        events: vec![],
+    };
+    let step = api::step_game_state(&state, &batch).unwrap();
+    assert_eq!(step.state.current_time, 0);
 }
 
 /// Demonstrates how slide judgment data flows from Lean to Rust.

@@ -7,6 +7,7 @@ This directory contains the single-source Rust implementation files shared by:
 
 Files:
 
+- `rust_ffi_api.rs` — typed helpers around the string-based parse/build/step APIs
 - `rust_ffi_raw.rs` — raw Lean/FFI symbol declarations and runtime init
 - `rust_ffi_session.rs` — typestate session wrapper and JSON envelope helpers
 - `rust_ffi_types.rs` — typed Rust mirrors of Lean JSON payloads
