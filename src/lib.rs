@@ -1,4 +1,5 @@
 pub mod session;
+pub mod types;
 #[cfg(test)]
 pub mod test;
 use lean_sys::{lean_dec_ref, lean_io_result_is_error, lean_object};
