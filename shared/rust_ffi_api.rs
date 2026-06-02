@@ -2,8 +2,8 @@ use crate::raw;
 use crate::session::{LnmaiError, Result};
 use crate::types;
 use lean_sys::{lean_object, lean_string_cstr};
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::ffi::{CStr, CString};
 
 fn mk_lean_string(content: &str) -> *mut lean_object {
@@ -77,6 +77,12 @@ pub fn parse_lowered_chart(content: &str, level_index: u32) -> Result<types::Cha
     call_parse(content, level_index, raw::lnmai_parse_lowered_chart_json)
 }
 
+/// Builds runtime state from a lowered chart payload.
+///
+/// The lowered schema now uses explicit `slideHeads` plus slide-body `slides`.
+/// Matching lowered head/body objects are linked by `logicalSlideId`.
+/// Lowered slide bodies serialize `headTiming` as the body-side preserved head
+/// anchor.
 pub fn build_game_state(chart_spec: &types::ChartSpec) -> Result<types::GameState> {
     call_json_input(chart_spec, raw::lnmai_build_game_state_json)
 }

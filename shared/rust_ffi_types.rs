@@ -413,7 +413,11 @@ pub struct NormalizedTouchHold {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NormalizedSlide {
-    pub timing: TimePoint,
+    /// Body-side preserved slide-head timing anchor.
+    ///
+    /// The current schema exports `headTiming`.
+    #[serde(rename = "headTiming")]
+    pub head_timing: TimePoint,
     pub slot: OuterSlot,
     pub length: Duration,
     pub start_timing: TimePoint,
@@ -430,6 +434,14 @@ pub struct NormalizedSlide {
     pub is_ex: bool,
     #[serde(default)]
     pub is_hanabi: bool,
+    /// Preferred normalized semantic flag for whether a judged head exists.
+    pub has_head_note: bool,
+    /// Preferred normalized semantic flag for whether a slide body exists.
+    pub has_body: bool,
+    /// Compatibility metadata from parser-originated chart syntax.
+    ///
+    /// Do not treat this as the long-term semantic authority for head/body
+    /// existence when `has_head_note` / `has_body` are available.
     #[serde(default)]
     pub is_slide_no_head: bool,
     #[serde(default)]
@@ -568,14 +580,40 @@ pub struct TouchHoldChartNote {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SlideChartNote {
+pub struct SlideHeadChartNote {
     pub timing: TimePoint,
+    pub slot: OuterSlot,
+    #[serde(default)]
+    pub is_break: bool,
+    #[serde(rename = "isEX", default)]
+    pub is_ex: bool,
+    /// Shared logical slide identity linking lowered head/body objects.
+    #[serde(default)]
+    pub logical_slide_id: u64,
+    /// Runtime object note id.
+    ///
+    /// Lowered slide heads and slide bodies use distinct `noteIndex` values
+    /// while sharing `logicalSlideId`.
+    pub note_index: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlideChartNote {
+    /// Body-side preserved slide-head timing anchor.
+    ///
+    /// The current schema exports `headTiming`.
+    #[serde(rename = "headTiming")]
+    pub head_timing: TimePoint,
     pub slot: OuterSlot,
     pub length: Duration,
     pub start_timing: TimePoint,
     pub slide_kind: RuntimeSlideKind,
     #[serde(default)]
     pub is_classic: bool,
+    /// Compatibility metadata retained on the lowered body object.
+    #[serde(default)]
+    pub is_slide_no_head: bool,
     #[serde(default)]
     pub is_conn_slide: bool,
     #[serde(default)]
@@ -596,6 +634,13 @@ pub struct SlideChartNote {
     pub is_break: bool,
     #[serde(rename = "isEX", default)]
     pub is_ex: bool,
+    /// Shared logical slide identity linking lowered head/body objects.
+    #[serde(default)]
+    pub logical_slide_id: u64,
+    /// Runtime object note id.
+    ///
+    /// Lowered slide heads and slide bodies use distinct `noteIndex` values
+    /// while sharing `logicalSlideId`.
     pub note_index: u64,
     pub judge_queues: Vec<Vec<SlideAreaSpec>>,
     #[serde(default)]
@@ -609,6 +654,8 @@ pub struct ChartSpec {
     pub holds: Vec<HoldChartNote>,
     pub touches: Vec<TouchChartNote>,
     pub touch_holds: Vec<TouchHoldChartNote>,
+    #[serde(default)]
+    pub slide_heads: Vec<SlideHeadChartNote>,
     pub slides: Vec<SlideChartNote>,
     #[serde(default)]
     pub slide_skipping: Option<bool>,
@@ -691,6 +738,39 @@ pub struct TapNote {
     pub lane: OuterSlot,
     pub state: TapState,
     pub button_queue_index: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlideHeadNote {
+    pub params: CommonNoteParams,
+    pub lane: OuterSlot,
+    pub state: TapState,
+    pub logical_slide_id: u64,
+    pub button_queue_index: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum TapFamilyNote {
+    #[serde(rename = "tap")]
+    Tap {
+        params: CommonNoteParams,
+        lane: OuterSlot,
+        state: TapState,
+        #[serde(rename = "buttonQueueIndex")]
+        button_queue_index: u64,
+    },
+    #[serde(rename = "slideHead")]
+    SlideHead {
+        params: CommonNoteParams,
+        lane: OuterSlot,
+        state: TapState,
+        #[serde(rename = "logicalSlideId")]
+        logical_slide_id: u64,
+        #[serde(rename = "buttonQueueIndex")]
+        button_queue_index: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -799,7 +879,11 @@ pub struct SlideNote {
     pub lane: OuterSlot,
     pub state: SlideState,
     pub length: Duration,
-    pub timing: TimePoint,
+    /// Runtime body-side preserved slide-head timing anchor.
+    ///
+    /// Runtime state serializes `headTiming`.
+    #[serde(rename = "headTiming")]
+    pub head_timing: TimePoint,
     pub start_timing: TimePoint,
     pub slide_kind: RuntimeSlideKind,
     #[serde(default)]
@@ -871,7 +955,7 @@ pub struct GameState {
     pub prev_sensor: Vec<bool>,
     pub button_queue_frontiers: Vec<u64>,
     pub touch_queue_frontiers: Vec<u64>,
-    pub tap_queues: Vec<ZoneQueue<TapNote>>,
+    pub tap_queues: Vec<ZoneQueue<TapFamilyNote>>,
     pub hold_queues: Vec<ZoneQueue<HoldNote>>,
     pub touch_hold_queues: Vec<ZoneQueue<HoldNote>>,
     pub touch_queues: Vec<ZoneQueue<TouchNote>>,

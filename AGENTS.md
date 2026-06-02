@@ -1,13 +1,37 @@
 # AGENTS.md
 
+## Urgent
+
+Before changing slide parser/runtime/prover/FFI behavior, read:
+
+- `lnmai-core/doc/slide-head-body-refactor-proposal.md`
+- `lnmai-core/doc/refactor-roadmap-semantic-parity.md`
+- `lnmai-core/doc/refactor-task-list-semantic-parity.md`
+
+Current urgent semantic-parity target:
+
+- split slide head and slide body into separate lowered objects before runtime
+
+This is the preferred direction for supporting:
+
+- ordinary slides
+- singleton no-head slides
+- connected body-only parts
+- possible head-only artifacts
+
+Before implementing this refactor, first inspect the corresponding runtime semantics in `lnmai-core/reference/MajdataPlay` carefully.
+Do not implement directly from the proposal doc alone when the relevant MajdataPlay behavior can still be checked in source.
+
+Avoid introducing new ad hoc runtime exceptions for slide heads until that proposal has been checked.
+
 ## Code Reading Rules
 
 ### Priority (read first)
 
 #### Architecture docs
-- `docs/ffi-ir.md` — IR 类型定义与字段语义
-- `docs/ffi-api.md` — FFI 导出接口与生命周期
-- `README.md` — 项目整体结构
+- `docs/ffi-ir.md` — IR type definitions and field semantics
+- `docs/ffi-api.md` — FFI export interfaces and lifecycle
+- `README.md` — project structure overview
 
 #### Rust side
 - `lnmai-core/src/ir.rs`
@@ -25,31 +49,31 @@
 ## Reading Strategy
 
 ### General
-1. 先读 markdown 文档建立架构模型
-2. 优先 Grep，再局部 Read
-3. 单次 Read 限制在 50-120 行
-4. 不要一次性读取整个大型 `.lean` 或 `.rs` 文件
-5. 只沿调用链继续追踪，不做全项目扫描
+1. Read markdown docs first to build the architecture model.
+2. Prefer `Grep` first, then targeted reads.
+3. Keep a single read to roughly 50-120 lines.
+4. Do not read an entire large `.lean` or `.rs` file at once.
+5. Follow the call chain only; do not scan the whole project without cause.
 
 ### Rust
-- 用 `Grep "pub struct"` 定位数据结构
-- 用 `Grep "pub fn"` 定位接口
-- FFI 优先看 `extern "C"`
+- Use `Grep "pub struct"` to locate data structures.
+- Use `Grep "pub fn"` to locate interfaces.
+- For FFI, inspect `extern "C"` first.
 
 ### Lean
-- 用 `Grep "def "` / `theorem` / `inductive`
-- 优先读顶层 API，不读 tactic 细节
-- 除非修改证明，否则不要深入 proof block
-- 对 theorem 只关注：
-    - 签名
-    - 输入输出
-    - 使用位置
+- Use `Grep "def "` / `theorem` / `inductive`.
+- Prefer top-level APIs over tactic details.
+- Do not dive into proof blocks unless you are changing proofs.
+- For theorems, focus only on:
+    - signature
+    - inputs and outputs
+    - usage sites
 
 ### Cross-language
-- Rust ↔ Lean 交互先确认：
-    - 导出符号名
+- For Rust ↔ Lean interaction, confirm first:
+    - exported symbol names
     - ownership
-    - 生命周期
+    - lifetimes
     - enum layout
     - `repr(C)`
 
@@ -104,25 +128,25 @@
 - explicit FFI bridge modules
 
 ### Proof handling
-- 不主动优化 theorem proof
-- 不重写 tactic 风格
-- 不把 proof 改成 term mode，除非用户要求
+- Do not optimize theorem proofs proactively.
+- Do not rewrite tactic style.
+- Do not convert proofs to term mode unless the user asks.
 
 ---
 
 ## FFI Rules
 
-1. 修改 FFI 前必须先读：
+1. Before changing FFI, read:
     - `docs/ffi-api.md`
     - Rust extern declarations
     - Lean export definitions
 
-2. 所有跨语言结构体必须确认：
+2. For every cross-language struct, confirm:
     - `#[repr(C)]`
     - enum layout
     - ownership
 
-3. 禁止随意修改：
+3. Do not casually change:
     - exported symbol names
     - ABI
     - enum discriminant
@@ -132,39 +156,43 @@
 ## Code Conventions
 
 ### Rust
-- 模块名：`snake_case`
-- 类型名：`CamelCase`
-- 避免 clone 大对象
-- 优先借用
+- Module names: `snake_case`
+- Type names: `CamelCase`
+- Avoid cloning large objects.
+- Prefer borrowing.
 
 ### Lean
-- theorem 名保持语义化
-- 避免超长 namespace
-- 不自动展开 simp 链
+- Keep theorem names semantic.
+- Avoid overly long namespaces.
+- Do not automatically expand `simp` chains.
 
 ### General
-- 不添加无意义注释
-- 不自动重构文件结构
-- 不顺手修 unrelated code
+- Do not add meaningless comments.
+- Do not refactor file structure opportunistically.
+- Do not fix unrelated code incidentally.
+
+### Documentation language
+- Write docs in English.
+- If an external file, chart title, or source artifact uses Chinese or Japanese in its literal name, keep the literal name unchanged and explain it in English around it.
 
 ---
 
 ## Workflow
 
-阅读顺序：
+Reading order:
 
 1. docs
-2. 类型定义
+2. type definitions
 3. API
-4. 实现
-5. 测试
+4. implementation
+5. tests
 
-修改顺序：
+Modification order:
 
-1. 类型
+1. types
 2. FFI
-3. 实现
-4. 测试
+3. implementation
+4. tests
 
 ---
 
