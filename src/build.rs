@@ -63,13 +63,15 @@ pub fn build(path:PathBuf) {
 }
 
 fn run_lake_build(lean_project: &Path) {
-    let status = Command::new("lake")
-        .args(["build", "LnmaiCore", "LnmaiCore.FFI"])
-        .current_dir(lean_project)
-        .status()
-        .expect("failed to invoke lake");
-    if !status.success() {
-        panic!("lake build failed with status {status}");
+    for target in ["LnmaiCore.Proofs.Runtime:c.o", "LnmaiCore.FFI:c.o", "lnmai-core"] {
+        let status = Command::new("lake")
+            .args(["build", target])
+            .current_dir(lean_project)
+            .status()
+            .expect("failed to invoke lake");
+        if !status.success() {
+            panic!("lake build failed for {target} with status {status}");
+        }
     }
 }
 

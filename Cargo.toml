@@ -11,3 +11,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libloading = "0.9.0"
 lean-sys = { version = "0.0.9", path = "./lean-sys", default-features = false, features = ["static"] }
+
+[[bin]]
+name = "default-tactic-demo"
+path = "src/bin/default_tactic_demo.rs"

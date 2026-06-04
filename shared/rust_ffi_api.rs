@@ -87,6 +87,12 @@ pub fn build_game_state(chart_spec: &types::ChartSpec) -> Result<types::GameStat
     call_json_input(chart_spec, raw::lnmai_build_game_state_json)
 }
 
+pub fn default_tactic_from_chart(
+    chart_spec: &types::ChartSpec,
+) -> Result<types::ManualTacticSequence> {
+    call_json_input(chart_spec, raw::lnmai_default_tactic_from_chart_json)
+}
+
 pub fn step_game_state(
     state: &types::GameState,
     batch: &types::TimedInputBatch,

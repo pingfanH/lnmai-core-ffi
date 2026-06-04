@@ -80,6 +80,9 @@ fn typed_api_helpers_roundtrip_runtime_structures() {
     let lowered = api::parse_lowered_chart(chart_text, 6).unwrap();
     assert!(!lowered.slides.is_empty());
 
+    let tactic = api::default_tactic_from_chart(&lowered).unwrap();
+    assert!(!tactic.events.is_empty());
+
     let state = api::build_game_state(&lowered).unwrap();
     assert_eq!(state.current_time, 0);
 

@@ -682,6 +682,12 @@ pub struct TimedInputBatch {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ManualTacticSequence {
+    pub events: Vec<TimedInputEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FrameInput {
     pub button_clicked: Vec<bool>,
     pub button_held: Vec<bool>,
