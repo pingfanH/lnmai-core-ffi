@@ -83,23 +83,65 @@ pub enum JudgeStyle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum SensorArea {
-    A1, A2, A3, A4, A5, A6, A7, A8,
-    B1, B2, B3, B4, B5, B6, B7, B8,
+    A1,
+    A2,
+    A3,
+    A4,
+    A5,
+    A6,
+    A7,
+    A8,
+    B1,
+    B2,
+    B3,
+    B4,
+    B5,
+    B6,
+    B7,
+    B8,
     C,
-    D1, D2, D3, D4, D5, D6, D7, D8,
-    E1, E2, E3, E4, E5, E6, E7, E8,
+    D1,
+    D2,
+    D3,
+    D4,
+    D5,
+    D6,
+    D7,
+    D8,
+    E1,
+    E2,
+    E3,
+    E4,
+    E5,
+    E6,
+    E7,
+    E8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum ButtonZone {
-    K1, K2, K3, K4, K5, K6, K7, K8,
+    K1,
+    K2,
+    K3,
+    K4,
+    K5,
+    K6,
+    K7,
+    K8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum OuterSlot {
-    S1, S2, S3, S4, S5, S6, S7, S8,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    S8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,9 +153,9 @@ pub struct Rational {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimePos {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub button: Option<ButtonZone>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sensor: Option<SensorArea>,
 }
 
@@ -167,17 +209,35 @@ pub enum SyntaxSlideKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CanonicalSlideShape {
     #[serde(rename = "line")]
-    Line { #[serde(rename = "relEnd")] rel_end: u64 },
+    Line {
+        #[serde(rename = "relEnd")]
+        rel_end: u64,
+    },
     #[serde(rename = "circle")]
-    Circle { #[serde(rename = "relEnd")] rel_end: u64 },
+    Circle {
+        #[serde(rename = "relEnd")]
+        rel_end: u64,
+    },
     #[serde(rename = "v")]
-    V { #[serde(rename = "relEnd")] rel_end: u64 },
+    V {
+        #[serde(rename = "relEnd")]
+        rel_end: u64,
+    },
     #[serde(rename = "turn")]
-    Turn { #[serde(rename = "relEnd")] rel_end: u64 },
+    Turn {
+        #[serde(rename = "relEnd")]
+        rel_end: u64,
+    },
     #[serde(rename = "pq")]
-    Pq { #[serde(rename = "relEnd")] rel_end: u64 },
+    Pq {
+        #[serde(rename = "relEnd")]
+        rel_end: u64,
+    },
     #[serde(rename = "ppqq")]
-    Ppqq { #[serde(rename = "relEnd")] rel_end: u64 },
+    Ppqq {
+        #[serde(rename = "relEnd")]
+        rel_end: u64,
+    },
     #[serde(rename = "s")]
     S,
     #[serde(rename = "wifi")]
@@ -666,11 +726,21 @@ pub enum TimedInputEvent {
     #[serde(rename = "buttonClick")]
     ButtonClick { tp: TimePoint, zone: ButtonZone },
     #[serde(rename = "buttonHold")]
-    ButtonHold { tp: TimePoint, zone: ButtonZone, #[serde(rename = "isDown")] is_down: bool },
+    ButtonHold {
+        tp: TimePoint,
+        zone: ButtonZone,
+        #[serde(rename = "isDown")]
+        is_down: bool,
+    },
     #[serde(rename = "sensorClick")]
     SensorClick { tp: TimePoint, area: SensorArea },
     #[serde(rename = "sensorHold")]
-    SensorHold { tp: TimePoint, area: SensorArea, #[serde(rename = "isDown")] is_down: bool },
+    SensorHold {
+        tp: TimePoint,
+        area: SensorArea,
+        #[serde(rename = "isDown")]
+        is_down: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -850,12 +920,17 @@ pub enum SlideState {
     #[serde(rename = "Waiting")]
     Waiting,
     #[serde(rename = "Active")]
-    Active { #[serde(rename = "waitTime")] wait_time: Duration },
+    Active {
+        #[serde(rename = "waitTime")]
+        wait_time: Duration,
+    },
     #[serde(rename = "Judged")]
     Judged {
         grade: JudgeGrade,
-        #[serde(rename = "waitTime")] wait_time: Duration,
-        #[serde(rename = "judgeDiff")] judge_diff: Duration,
+        #[serde(rename = "waitTime")]
+        wait_time: Duration,
+        #[serde(rename = "judgeDiff")]
+        judge_diff: Duration,
     },
     #[serde(rename = "Ended")]
     Ended,
@@ -926,6 +1001,14 @@ pub struct GroupState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TouchHoldBodyGroupState {
+    pub group_id: u64,
+    pub member_note_indices: Vec<u64>,
+    pub triggered_note_indices: Vec<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NoteTypeJudgeCounts {
     pub tap_count: JudgeCounts,
     pub hold_count: JudgeCounts,
@@ -969,7 +1052,7 @@ pub struct GameState {
     pub active_holds: Vec<(ButtonZone, HoldNote)>,
     pub active_touch_holds: Vec<(SensorArea, HoldNote)>,
     pub touch_group_states: Vec<GroupState>,
-    pub touch_hold_group_states: Vec<GroupState>,
+    pub touch_hold_group_states: Vec<TouchHoldBodyGroupState>,
     pub current_batch: TimedInputBatch,
     pub score: ScoreState,
     pub judge_style: JudgeStyle,
@@ -986,60 +1069,81 @@ pub struct JudgeEvent {
     pub diff: Duration,
     pub position: RuntimePos,
     pub note_index: u64,
+    #[serde(default)]
+    pub is_break: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "tag")]
 pub enum AudioCommand {
     #[serde(rename = "PlayJudgeSfx")]
     PlayJudgeSfx {
         kind: JudgeEventKind,
         grade: JudgeGrade,
+        #[serde(rename = "isBreak", default)]
+        is_break: bool,
+        #[serde(rename = "atTime")]
         at_time: TimePoint,
+        #[serde(rename = "noteIndex")]
         note_index: u64,
     },
     #[serde(rename = "PlaySlideCue")]
     PlaySlideCue {
+        #[serde(rename = "noteIndex")]
         note_index: u64,
+        #[serde(rename = "trackIndex")]
         track_index: u64,
+        #[serde(rename = "isBreak", default)]
+        is_break: bool,
+        #[serde(rename = "atTime")]
         at_time: TimePoint,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "tag")]
 pub enum RenderCommand {
     #[serde(rename = "ShowJudgeResult")]
     ShowJudgeResult {
         kind: JudgeEventKind,
         grade: JudgeGrade,
+        #[serde(rename = "isBreak", default)]
+        is_break: bool,
         diff: Duration,
+        #[serde(rename = "noteIndex")]
         note_index: u64,
     },
     #[serde(rename = "UpdateSlideProgress")]
     UpdateSlideProgress {
+        #[serde(rename = "noteIndex")]
         note_index: u64,
         remaining: u64,
     },
     #[serde(rename = "UpdateSlideTrackProgress")]
     UpdateSlideTrackProgress {
+        #[serde(rename = "noteIndex")]
         note_index: u64,
+        #[serde(rename = "trackIndex")]
         track_index: u64,
         remaining: u64,
     },
     #[serde(rename = "HideAllSlideBars")]
     HideAllSlideBars {
+        #[serde(rename = "noteIndex")]
         note_index: u64,
     },
     #[serde(rename = "HideSlideBars")]
     HideSlideBars {
+        #[serde(rename = "noteIndex")]
         note_index: u64,
+        #[serde(rename = "endIndex")]
         end_index: u64,
     },
     #[serde(rename = "HideSlideTrackBars")]
     HideSlideTrackBars {
+        #[serde(rename = "noteIndex")]
         note_index: u64,
+        #[serde(rename = "trackIndex")]
         track_index: u64,
+        #[serde(rename = "endIndex")]
         end_index: u64,
     },
 }

@@ -3,22 +3,37 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn build(path:PathBuf) {
-    let manifest_dir =path;
+pub fn build(path: PathBuf) {
+    let manifest_dir = path;
     let lean_project = manifest_dir.join("lnmai-core");
 
-
-    println!("cargo:rerun-if-changed={}", lean_project.join("lakefile.toml").display());
-    println!("cargo:rerun-if-changed={}", lean_project.join("lean-toolchain").display());
-    println!("cargo:rerun-if-changed={}", lean_project.join("LnmaiCore").display());
-    println!("cargo:rerun-if-changed={}", lean_project.join("include/lnmai_ffi.h").display());
-    println!("cargo:rerun-if-changed={}", lean_project.join("include/lnmai_session.h").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        lean_project.join("lakefile.toml").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        lean_project.join("lean-toolchain").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        lean_project.join("LnmaiCore").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        lean_project.join("include/lnmai_ffi.h").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        lean_project.join("include/lnmai_session.h").display()
+    );
 
     run_lake_build(&lean_project);
 
     let lake_rsp_path = lean_project.join(".lake/build/bin/lnmai-core.rsp");
     println!("cargo:rerun-if-changed={}", lake_rsp_path.display());
-    let lake_rsp = fs::read_to_string(&lake_rsp_path).expect("failed to read Lake link response file");
+    let lake_rsp =
+        fs::read_to_string(&lake_rsp_path).expect("failed to read Lake link response file");
     let lake_args = parse_rsp(&lake_rsp);
 
     let resolved = resolve_system_libraries(&lake_args);
@@ -31,39 +46,29 @@ pub fn build(path:PathBuf) {
     if let Some(parent) = resolved.lean_toolchain_lib_dir.parent() {
         println!("cargo:rustc-link-search=native={}", parent.display());
     }
-    println!("cargo:rustc-link-search=native={}", resolved.lean_toolchain_lib_dir.display());
+    println!(
+        "cargo:rustc-link-search=native={}",
+        resolved.lean_toolchain_lib_dir.display()
+    );
     println!("cargo:rustc-link-arg=@{}", linker_rsp_path.display());
     println!("cargo:rustc-link-arg=-Wl,-syslibroot");
     fn sdk_path() -> String {
-
         let output = Command::new("xcrun")
-
             .args(["--sdk", "macosx", "--show-sdk-path"])
-
             .output()
-
             .expect("failed to query sdk path");
 
-        String::from_utf8(output.stdout)
-
-            .unwrap()
-
-            .trim()
-
-            .to_string()
-
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
     }
-    println!(
-
-        "cargo:rustc-link-arg={}",
-
-        sdk_path()
-
-    );
+    println!("cargo:rustc-link-arg={}", sdk_path());
 }
 
 fn run_lake_build(lean_project: &Path) {
-    for target in ["LnmaiCore.Proofs.Runtime:c.o", "LnmaiCore.FFI:c.o", "lnmai-core"] {
+    for target in [
+        "LnmaiCore.Proofs.Runtime:c.o",
+        "LnmaiCore.FFI:c.o",
+        "lnmai-core",
+    ] {
         let status = Command::new("lake")
             .args(["build", target])
             .current_dir(lean_project)
@@ -84,18 +89,20 @@ fn parse_rsp(content: &str) -> Vec<String> {
         .collect()
 }
 
-fn build_link_rsp(lake_args: &[String], resolved: &ResolvedLibraries, lean_project: &Path) -> String {
+fn build_link_rsp(
+    lake_args: &[String],
+    resolved: &ResolvedLibraries,
+    lean_project: &Path,
+) -> String {
     let mut out = String::new();
     let mut index = 0;
     while index < lake_args.len() {
         let arg = &lake_args[index];
 
         if arg == "-fuse-ld=lld" {
-
             index += 1;
 
             continue;
-
         }
 
         if is_excluded_object(arg, lean_project) {
@@ -269,7 +276,10 @@ fn find_library_recursive(root: &Path, candidates: &[String]) -> Option<PathBuf>
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if candidates.iter().any(|candidate| name == candidate || name.starts_with(&format!("{candidate}."))) {
+        if candidates
+            .iter()
+            .any(|candidate| name == candidate || name.starts_with(&format!("{candidate}.")))
+        {
             return Some(path);
         }
     }
@@ -290,7 +300,8 @@ fn parse_compiler_library_roots() -> Vec<PathBuf> {
         .arg("-print-search-dirs")
         .output()
         .expect("failed to query compiler search dirs");
-    let stdout = String::from_utf8(output.stdout).expect("compiler search dirs were not valid UTF-8");
+    let stdout =
+        String::from_utf8(output.stdout).expect("compiler search dirs were not valid UTF-8");
 
     let mut roots = Vec::new();
     for line in stdout.lines() {
@@ -351,7 +362,10 @@ fn library_base_name(package: &str) -> &'static str {
 }
 
 fn library_candidates(base: &str, suffixes: &[&str]) -> Vec<String> {
-    suffixes.iter().map(|suffix| format!("{base}{suffix}")).collect()
+    suffixes
+        .iter()
+        .map(|suffix| format!("{base}{suffix}"))
+        .collect()
 }
 
 fn dynamic_library_suffixes() -> Vec<&'static str> {

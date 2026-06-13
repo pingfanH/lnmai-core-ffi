@@ -1,15 +1,21 @@
 use crate::api;
-use serde_json::json;
 use crate::session::*;
 use crate::types::*;
-use crate::{lean_mk_string, lnmai_parse_frontend_chart_json, lnmai_parse_frontend_inspection_chart_json, lnmai_parse_frontend_semantic_chart_json, lnmai_parse_lowered_chart_json, lnmai_parse_normalized_chart_json};
+use crate::{
+    lean_mk_string, lnmai_parse_frontend_chart_json, lnmai_parse_frontend_inspection_chart_json,
+    lnmai_parse_frontend_semantic_chart_json, lnmai_parse_lowered_chart_json,
+    lnmai_parse_normalized_chart_json,
+};
 use lean_sys::{lean_object, lean_string_cstr};
+use serde_json::json;
 use std::ffi::{CStr, CString};
 use std::sync::{Mutex, OnceLock};
 
 fn test_guard() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|poison| poison.into_inner())
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
 }
 
 fn ensure_runtime() {
@@ -23,7 +29,9 @@ fn call_string_ffi(f: impl FnOnce(*mut lean_object) -> *mut lean_object, input: 
     let result = f(content);
     unsafe {
         let ptr = lean_string_cstr(result);
-        let value = CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned();
+        let value = CStr::from_ptr(ptr as *const i8)
+            .to_string_lossy()
+            .into_owned();
         lean_sys::lean_dec_ref(result);
         value
     }
@@ -39,35 +47,40 @@ fn parser_outputs_roundtrip_into_rust_types() {
         |content| unsafe { lnmai_parse_frontend_chart_json(content, 6) },
         chart_text,
     );
-    let frontend: crate::types::FfiEnvelope<FrontendChartResult> = serde_json::from_str(&frontend_json).unwrap();
+    let frontend: crate::types::FfiEnvelope<FrontendChartResult> =
+        serde_json::from_str(&frontend_json).unwrap();
     assert!(frontend.ok);
 
     let semantic_json = call_string_ffi(
         |content| unsafe { lnmai_parse_frontend_semantic_chart_json(content, 6) },
         chart_text,
     );
-    let semantic: crate::types::FfiEnvelope<FrontendSemanticChart> = serde_json::from_str(&semantic_json).unwrap();
+    let semantic: crate::types::FfiEnvelope<FrontendSemanticChart> =
+        serde_json::from_str(&semantic_json).unwrap();
     assert!(semantic.ok);
 
     let inspection_json = call_string_ffi(
         |content| unsafe { lnmai_parse_frontend_inspection_chart_json(content, 6) },
         chart_text,
     );
-    let inspection: crate::types::FfiEnvelope<FrontendChartInspection> = serde_json::from_str(&inspection_json).unwrap();
+    let inspection: crate::types::FfiEnvelope<FrontendChartInspection> =
+        serde_json::from_str(&inspection_json).unwrap();
     assert!(inspection.ok);
 
     let normalized_json = call_string_ffi(
         |content| unsafe { lnmai_parse_normalized_chart_json(content, 6) },
         chart_text,
     );
-    let normalized: crate::types::FfiEnvelope<NormalizedChart> = serde_json::from_str(&normalized_json).unwrap();
+    let normalized: crate::types::FfiEnvelope<NormalizedChart> =
+        serde_json::from_str(&normalized_json).unwrap();
     assert!(normalized.ok);
 
     let lowered_json = call_string_ffi(
         |content| unsafe { lnmai_parse_lowered_chart_json(content, 6) },
         chart_text,
     );
-    let lowered: crate::types::FfiEnvelope<ChartSpec> = serde_json::from_str(&lowered_json).unwrap();
+    let lowered: crate::types::FfiEnvelope<ChartSpec> =
+        serde_json::from_str(&lowered_json).unwrap();
     assert!(lowered.ok);
 }
 
@@ -106,7 +119,7 @@ fn typed_api_helpers_roundtrip_runtime_structures() {
 /// - `RenderCommand::UpdateSlideProgress { note_index, remaining }` is
 ///   emitted only when the remaining area count changes (not every frame).
 ///
-/// - `JudgeEvent { kind: Slide, grade, diff, note_index }` is emitted
+/// - `JudgeEvent { kind: Slide, is_break, grade, diff, note_index }` is emitted
 ///   once when the slide finishes judgment (after the wait countdown).
 ///
 /// - `note_index` is the sole identifier linking all commands to a
@@ -120,7 +133,11 @@ fn slide_judgment_parse_instance() {
     let empty = Session::<Empty>::create().unwrap();
     let (mut loaded, _load_info) = empty.load_chart_text(chart_text, 6).unwrap();
 
-    let lowered_chart: ChartSpec = loaded.get_lowered_chart_json().unwrap().decode_result().unwrap();
+    let lowered_chart: ChartSpec = loaded
+        .get_lowered_chart_json()
+        .unwrap()
+        .decode_result()
+        .unwrap();
     assert!(!lowered_chart.slides.is_empty());
 
     let state: GameState = loaded.get_state_json().unwrap().decode_result().unwrap();
@@ -128,9 +145,9 @@ fn slide_judgment_parse_instance() {
 
     // Step 1: Advance at time 0 with no input.
     // This lets notes that start at t=0 get processed.
-    let step0 = loaded.advance_frame_light(
-        &json!({ "currentTime": 0, "events": [] }).to_string(),
-    ).unwrap();
+    let step0 = loaded
+        .advance_frame_light(&json!({ "currentTime": 0, "events": [] }).to_string())
+        .unwrap();
 
     // Parse the raw JSON envelope into our typed result.
     let envelope: FfiResult = serde_json::from_str(&step0.json).unwrap();
@@ -149,7 +166,9 @@ fn slide_judgment_parse_instance() {
             is_down: true,
         }],
     };
-    let step1 = loaded.advance_frame_light(&serde_json::to_string(&batch).unwrap()).unwrap();
+    let step1 = loaded
+        .advance_frame_light(&serde_json::to_string(&batch).unwrap())
+        .unwrap();
 
     let envelope1: FfiResult = serde_json::from_str(&step1.json).unwrap();
     let result1: RuntimeStepLightResult =
@@ -159,21 +178,31 @@ fn slide_judgment_parse_instance() {
     for cmd in &result1.render_commands {
         match cmd {
             // Individual area completed: hide the slide bar up to arrow `end_index`.
-            RenderCommand::HideSlideBars { note_index, end_index } => {
+            RenderCommand::HideSlideBars {
+                note_index,
+                end_index,
+            } => {
                 eprintln!(
                     "slide noteIndex={} area completed, hide bar up to arrow {}",
                     note_index, end_index
                 );
             }
             // Overall remaining count changed (emitted only on change, not every frame).
-            RenderCommand::UpdateSlideProgress { note_index, remaining } => {
+            RenderCommand::UpdateSlideProgress {
+                note_index,
+                remaining,
+            } => {
                 eprintln!(
                     "slide noteIndex={} progress updated, {} areas remaining",
                     note_index, remaining
                 );
             }
             // Wifi/connected slide track-specific progress.
-            RenderCommand::UpdateSlideTrackProgress { note_index, track_index, remaining } => {
+            RenderCommand::UpdateSlideTrackProgress {
+                note_index,
+                track_index,
+                remaining,
+            } => {
                 eprintln!(
                     "slide noteIndex={} track={} progress, {} areas remaining",
                     note_index, track_index, remaining
@@ -183,7 +212,7 @@ fn slide_judgment_parse_instance() {
             RenderCommand::HideAllSlideBars { note_index } => {
                 eprintln!("slide noteIndex={} all bars hidden (ended)", note_index);
             }
-            // Non-slide render command (e.g., ShowJudgeResult for taps).
+            // Non-slide render command (e.g., ShowJudgeResult for taps/break taps).
             _ => {}
         }
     }
@@ -203,13 +232,170 @@ fn slide_judgment_parse_instance() {
 
     // Inspect audio commands — PlaySlideCue fires when a new track area activates.
     for cmd in &result1.audio_commands {
-        if let AudioCommand::PlaySlideCue { note_index, track_index, at_time } = cmd {
+        if let AudioCommand::PlaySlideCue {
+            note_index,
+            track_index,
+            is_break,
+            at_time,
+        } = cmd
+        {
             eprintln!(
-                "slide noteIndex={} track={} cue at t={}μs",
-                note_index, track_index, at_time
+                "slide noteIndex={} track={} break={} cue at t={}μs",
+                note_index, track_index, is_break, at_time
             );
         }
     }
 
     let (_empty, _unload_info) = loaded.unload_chart().unwrap();
+}
+
+#[test]
+fn command_and_event_break_flags_roundtrip() {
+    let event_json = r#"{
+      "kind": "Tap",
+      "grade": "Perfect",
+      "diff": 0,
+      "position": { "button": "K1" },
+      "noteIndex": 12,
+      "isBreak": true
+    }"#;
+    let event: JudgeEvent = serde_json::from_str(event_json).unwrap();
+    assert_eq!(event.kind, JudgeEventKind::Tap);
+    assert!(event.is_break);
+
+    let audio_json = r#"{
+      "PlayJudgeSfx": {
+        "noteIndex": 12,
+        "kind": "Tap",
+        "isBreak": true,
+        "grade": "Perfect",
+        "atTime": 0
+      }
+    }"#;
+    let audio: AudioCommand = serde_json::from_str(audio_json).unwrap();
+    match audio {
+        AudioCommand::PlayJudgeSfx {
+            kind,
+            grade,
+            is_break,
+            at_time,
+            note_index,
+        } => {
+            assert_eq!(kind, JudgeEventKind::Tap);
+            assert_eq!(grade, JudgeGrade::Perfect);
+            assert!(is_break);
+            assert_eq!(at_time, 0);
+            assert_eq!(note_index, 12);
+        }
+        _ => panic!("expected PlayJudgeSfx"),
+    }
+    let audio_roundtrip: serde_json::Value = serde_json::to_value(&audio).unwrap();
+    let audio_expected: serde_json::Value = serde_json::from_str(audio_json).unwrap();
+    assert_eq!(audio_roundtrip, audio_expected);
+
+    let slide_cue_json = r#"{
+      "PlaySlideCue": {
+        "trackIndex": 0,
+        "noteIndex": 72,
+        "isBreak": true,
+        "atTime": 0
+      }
+    }"#;
+    let slide_cue: AudioCommand = serde_json::from_str(slide_cue_json).unwrap();
+    match slide_cue {
+        AudioCommand::PlaySlideCue {
+            note_index,
+            track_index,
+            is_break,
+            at_time,
+        } => {
+            assert_eq!(note_index, 72);
+            assert_eq!(track_index, 0);
+            assert!(is_break);
+            assert_eq!(at_time, 0);
+        }
+        _ => panic!("expected PlaySlideCue"),
+    }
+    let slide_cue_roundtrip: serde_json::Value = serde_json::to_value(&slide_cue).unwrap();
+    let slide_cue_expected: serde_json::Value = serde_json::from_str(slide_cue_json).unwrap();
+    assert_eq!(slide_cue_roundtrip, slide_cue_expected);
+
+    let render_json = r#"{
+      "ShowJudgeResult": {
+        "noteIndex": 12,
+        "kind": "Tap",
+        "isBreak": true,
+        "grade": "Perfect",
+        "diff": 0
+      }
+    }"#;
+    let render: RenderCommand = serde_json::from_str(render_json).unwrap();
+    match render {
+        RenderCommand::ShowJudgeResult {
+            kind,
+            grade,
+            is_break,
+            diff,
+            note_index,
+        } => {
+            assert_eq!(kind, JudgeEventKind::Tap);
+            assert_eq!(grade, JudgeGrade::Perfect);
+            assert!(is_break);
+            assert_eq!(diff, 0);
+            assert_eq!(note_index, 12);
+        }
+        _ => panic!("expected ShowJudgeResult"),
+    }
+    let render_roundtrip: serde_json::Value = serde_json::to_value(&render).unwrap();
+    let render_expected: serde_json::Value = serde_json::from_str(render_json).unwrap();
+    assert_eq!(render_roundtrip, render_expected);
+}
+
+#[test]
+fn game_state_touch_hold_body_groups_roundtrip() {
+    let _guard = test_guard();
+    let chart_text = include_str!("../assets/24_Sun Dance/maidata.txt");
+    ensure_runtime();
+
+    let lowered = api::parse_lowered_chart(chart_text, 6).unwrap();
+    let state = api::build_game_state(&lowered).unwrap();
+    let mut state_json = serde_json::to_value(&state).unwrap();
+
+    let touch_group_states = json!([
+        {
+            "groupId": 140,
+            "count": 2,
+            "size": 3,
+            "grade": "Perfect",
+            "diff": 0
+        }
+    ]);
+    let touch_hold_body_groups = json!([
+        {
+            "groupId": 240,
+            "memberNoteIndices": [390, 391, 392],
+            "triggeredNoteIndices": [391, 392]
+        }
+    ]);
+
+    state_json["touchGroupStates"] = touch_group_states.clone();
+    state_json["touchHoldGroupStates"] = touch_hold_body_groups.clone();
+
+    let decoded: GameState = serde_json::from_value(state_json).unwrap();
+    assert_eq!(decoded.touch_group_states.len(), 1);
+    assert_eq!(decoded.touch_group_states[0].group_id, 140);
+    assert_eq!(decoded.touch_hold_group_states.len(), 1);
+    assert_eq!(decoded.touch_hold_group_states[0].group_id, 240);
+    assert_eq!(
+        decoded.touch_hold_group_states[0].member_note_indices,
+        vec![390, 391, 392]
+    );
+    assert_eq!(
+        decoded.touch_hold_group_states[0].triggered_note_indices,
+        vec![391, 392]
+    );
+
+    let encoded = serde_json::to_value(&decoded).unwrap();
+    assert_eq!(encoded["touchGroupStates"], touch_group_states);
+    assert_eq!(encoded["touchHoldGroupStates"], touch_hold_body_groups);
 }
