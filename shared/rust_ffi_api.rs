@@ -82,7 +82,9 @@ pub fn parse_lowered_chart(content: &str, level_index: u32) -> Result<types::Cha
 /// The lowered schema now uses explicit `slideHeads` plus slide-body `slides`.
 /// Matching lowered head/body objects are linked by `logicalSlideId`.
 /// Lowered slide bodies serialize `headTiming` as the body-side preserved head
-/// anchor.
+/// anchor. Touch-mode policy is intentionally absent from `GameState`; hosts
+/// that want desktop-style touch behavior should synthesize sensor input before
+/// stepping the runtime.
 pub fn build_game_state(chart_spec: &types::ChartSpec) -> Result<types::GameState> {
     call_json_input(chart_spec, raw::lnmai_build_game_state_json)
 }
@@ -93,6 +95,12 @@ pub fn default_tactic_from_chart(
     call_json_input(chart_spec, raw::lnmai_default_tactic_from_chart_json)
 }
 
+/// Steps a full JSON-visible runtime state by one timed input batch.
+///
+/// Button events drive outer-button notes such as taps, holds, and slide heads.
+/// Sensor events drive screen notes and bodies such as touch notes, touch holds,
+/// and slide bodies. Any desktop outer-button-to-sensor mapping belongs in the
+/// host input layer before calling this helper.
 pub fn step_game_state(
     state: &types::GameState,
     batch: &types::TimedInputBatch,

@@ -8,6 +8,7 @@ use crate::{
 };
 use lean_sys::{lean_object, lean_string_cstr};
 use serde_json::json;
+use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 use std::sync::{Mutex, OnceLock};
 
@@ -21,6 +22,16 @@ fn test_guard() -> std::sync::MutexGuard<'static, ()> {
 fn ensure_runtime() {
     static INIT: OnceLock<()> = OnceLock::new();
     INIT.get_or_init(|| unsafe { initialize_runtime().unwrap() });
+}
+
+fn single_judge_count(grade: JudgeGrade, count: u64) -> JudgeCounts {
+    let mut counts = BTreeMap::new();
+    counts.insert(grade, count);
+    counts
+}
+
+fn legacy_touch_mode_json_key() -> String {
+    ["use", "Button", "Ring", "For", "Touch"].concat()
 }
 
 fn call_string_ffi(f: impl FnOnce(*mut lean_object) -> *mut lean_object, input: &str) -> String {
@@ -98,6 +109,15 @@ fn typed_api_helpers_roundtrip_runtime_structures() {
 
     let state = api::build_game_state(&lowered).unwrap();
     assert_eq!(state.current_time, 0);
+    assert!(state.score.total_base > 0);
+    assert!(state.score.max_dx_score > 0);
+    assert_eq!(
+        state.score.dx_score_remaining(),
+        state.score.max_dx_score as i64
+    );
+    assert_eq!(state.score.combo_state(), ComboState::None);
+    let state_json = serde_json::to_value(&state).unwrap();
+    assert!(state_json.get(legacy_touch_mode_json_key()).is_none());
 
     let batch = TimedInputBatch {
         current_time: 0,
@@ -105,6 +125,49 @@ fn typed_api_helpers_roundtrip_runtime_structures() {
     };
     let step = api::step_game_state(&state, &batch).unwrap();
     assert_eq!(step.state.current_time, 0);
+    assert!(step.state.score.total_base > 0);
+    let step_state_json = serde_json::to_value(&step.state).unwrap();
+    assert!(step_state_json.get(legacy_touch_mode_json_key()).is_none());
+}
+
+#[test]
+fn rust_score_helpers_match_core_combo_categories() {
+    let score = ScoreState {
+        combo: 3,
+        p_combo: 1,
+        c_p_combo: 1,
+        total_base: 3_500,
+        total_extra: 100,
+        earned_base: 3_400,
+        earned_extra: 50,
+        lost_base: 100,
+        lost_extra: 50,
+        dx_score: -3,
+        max_dx_score: 9,
+        fast_count: 0,
+        late_count: 2,
+        counts: NoteTypeJudgeCounts {
+            tap_count: single_judge_count(JudgeGrade::LateGreat2nd, 1),
+            hold_count: BTreeMap::new(),
+            slide_count: BTreeMap::new(),
+            touch_count: BTreeMap::new(),
+            break_count: single_judge_count(JudgeGrade::LatePerfect3rd, 1),
+        },
+    };
+    assert_eq!(score.combo_state(), ComboState::FCPlus);
+    assert_eq!(score.dx_score_remaining(), 6);
+
+    let ap_plus = ScoreState {
+        counts: NoteTypeJudgeCounts {
+            tap_count: single_judge_count(JudgeGrade::Perfect, 1),
+            hold_count: BTreeMap::new(),
+            slide_count: BTreeMap::new(),
+            touch_count: BTreeMap::new(),
+            break_count: BTreeMap::new(),
+        },
+        ..score
+    };
+    assert_eq!(ap_plus.combo_state(), ComboState::APPlus);
 }
 
 /// Demonstrates how slide judgment data flows from Lean to Rust.

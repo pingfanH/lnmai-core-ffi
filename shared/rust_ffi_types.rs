@@ -44,7 +44,40 @@ pub enum JudgeGrade {
     TooFast,
 }
 
+impl JudgeGrade {
+    pub fn is_miss_or_too_fast(self) -> bool {
+        matches!(self, JudgeGrade::Miss | JudgeGrade::TooFast)
+    }
+
+    pub fn is_great_grade(self) -> bool {
+        matches!(
+            self,
+            JudgeGrade::LateGreat
+                | JudgeGrade::LateGreat2nd
+                | JudgeGrade::LateGreat3rd
+                | JudgeGrade::FastGreat
+                | JudgeGrade::FastGreat2nd
+                | JudgeGrade::FastGreat3rd
+        )
+    }
+
+    pub fn is_good_grade(self) -> bool {
+        matches!(self, JudgeGrade::LateGood | JudgeGrade::FastGood)
+    }
+}
+
 pub type JudgeCounts = BTreeMap<JudgeGrade, u64>;
+
+/// Result-combo display category derived from accumulated judge counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum ComboState {
+    None,
+    FC,
+    FCPlus,
+    AP,
+    APPlus,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -1017,6 +1050,46 @@ pub struct NoteTypeJudgeCounts {
     pub break_count: JudgeCounts,
 }
 
+impl NoteTypeJudgeCounts {
+    /// Counts one judge grade across all note families.
+    pub fn grade_count(&self, grade: JudgeGrade) -> u64 {
+        self.tap_count.get(&grade).copied().unwrap_or(0)
+            + self.hold_count.get(&grade).copied().unwrap_or(0)
+            + self.slide_count.get(&grade).copied().unwrap_or(0)
+            + self.touch_count.get(&grade).copied().unwrap_or(0)
+            + self.break_count.get(&grade).copied().unwrap_or(0)
+    }
+
+    /// Counts all judge grades matching a predicate across all note families.
+    pub fn grade_count_where(&self, mut pred: impl FnMut(JudgeGrade) -> bool) -> u64 {
+        ALL_JUDGE_GRADES
+            .iter()
+            .copied()
+            .filter(|grade| pred(*grade))
+            .map(|grade| self.grade_count(grade))
+            .sum()
+    }
+}
+
+/// Judge grades in the same order used by the Lean JSON count serializer.
+pub const ALL_JUDGE_GRADES: [JudgeGrade; 15] = [
+    JudgeGrade::Miss,
+    JudgeGrade::LateGood,
+    JudgeGrade::LateGreat3rd,
+    JudgeGrade::LateGreat2nd,
+    JudgeGrade::LateGreat,
+    JudgeGrade::LatePerfect3rd,
+    JudgeGrade::LatePerfect2nd,
+    JudgeGrade::Perfect,
+    JudgeGrade::FastPerfect2nd,
+    JudgeGrade::FastPerfect3rd,
+    JudgeGrade::FastGreat,
+    JudgeGrade::FastGreat2nd,
+    JudgeGrade::FastGreat3rd,
+    JudgeGrade::FastGood,
+    JudgeGrade::TooFast,
+];
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScoreState {
@@ -1029,11 +1102,56 @@ pub struct ScoreState {
     pub earned_extra: u64,
     pub lost_base: u64,
     pub lost_extra: u64,
+    /// DX-score loss delta: `0` means no loss, negative values represent lost
+    /// DX score. Use [`ScoreState::dx_score_remaining`] for the current
+    /// achieved DX score.
     pub dx_score: i64,
+    /// Total available DX score for the loaded chart.
     pub max_dx_score: u64,
     pub fast_count: u64,
     pub late_count: u64,
     pub counts: NoteTypeJudgeCounts,
+}
+
+impl ScoreState {
+    /// Achieved DX score, computed from the core loss-delta field.
+    pub fn dx_score_remaining(&self) -> i64 {
+        self.max_dx_score as i64 + self.dx_score
+    }
+
+    /// Display combo category matching `LnmaiCore.comboState`.
+    pub fn combo_state(&self) -> ComboState {
+        let critical = self.counts.grade_count(JudgeGrade::Perfect);
+        let perfect = self.counts.grade_count_where(|grade| {
+            matches!(
+                grade,
+                JudgeGrade::LatePerfect3rd
+                    | JudgeGrade::LatePerfect2nd
+                    | JudgeGrade::FastPerfect2nd
+                    | JudgeGrade::FastPerfect3rd
+            )
+        });
+        let great = self
+            .counts
+            .grade_count_where(|grade| grade.is_great_grade());
+        let good = self.counts.grade_count_where(|grade| grade.is_good_grade());
+        let miss = self
+            .counts
+            .grade_count_where(|grade| grade.is_miss_or_too_fast());
+        let all_non_miss = critical + perfect + great + good;
+
+        if all_non_miss == 0 || miss != 0 {
+            ComboState::None
+        } else if perfect == 0 && great == 0 && good == 0 {
+            ComboState::APPlus
+        } else if great == 0 && good == 0 {
+            ComboState::AP
+        } else if good == 0 {
+            ComboState::FCPlus
+        } else {
+            ComboState::FC
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1057,7 +1175,6 @@ pub struct GameState {
     pub score: ScoreState,
     pub judge_style: JudgeStyle,
     pub touch_panel_offset: Duration,
-    pub use_button_ring_for_touch: bool,
     pub subdivide_slide_judge_grade: bool,
 }
 
