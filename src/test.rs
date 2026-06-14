@@ -118,6 +118,10 @@ fn typed_api_helpers_roundtrip_runtime_structures() {
     assert_eq!(state.score.combo_state(), ComboState::None);
     let state_json = serde_json::to_value(&state).unwrap();
     assert!(state_json.get(legacy_touch_mode_json_key()).is_none());
+    assert_eq!(state.note_fast_late_display, JudgeDisplayOption::All);
+    assert_eq!(state.break_fast_late_display, JudgeDisplayOption::Disable);
+    assert_eq!(state_json["noteFastLateDisplay"], json!("All"));
+    assert_eq!(state_json["breakFastLateDisplay"], json!("Disable"));
 
     let batch = TimedInputBatch {
         current_time: 0,

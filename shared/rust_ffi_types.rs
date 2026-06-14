@@ -115,6 +115,23 @@ pub enum JudgeStyle {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+pub enum JudgeDisplayOption {
+    All,
+    BelowCP,
+    BelowP,
+    BelowGR,
+    MissOnly,
+    Disable,
+}
+
+impl Default for JudgeDisplayOption {
+    fn default() -> Self {
+        JudgeDisplayOption::All
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub enum SensorArea {
     A1,
     A2,
@@ -1176,6 +1193,14 @@ pub struct GameState {
     pub judge_style: JudgeStyle,
     pub touch_panel_offset: Duration,
     pub subdivide_slide_judge_grade: bool,
+    #[serde(default)]
+    pub note_fast_late_display: JudgeDisplayOption,
+    #[serde(default = "default_break_fast_late_display")]
+    pub break_fast_late_display: JudgeDisplayOption,
+}
+
+fn default_break_fast_late_display() -> JudgeDisplayOption {
+    JudgeDisplayOption::Disable
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
