@@ -664,6 +664,12 @@ pub struct TouchChartNote {
     pub sensor_pos: SensorArea,
     #[serde(default)]
     pub is_break: bool,
+    #[serde(default)]
+    pub source_group_id: Option<u64>,
+    #[serde(default)]
+    pub source_group_index: Option<u64>,
+    #[serde(default)]
+    pub source_group_size: Option<u64>,
     pub touch_queue_index: u64,
     #[serde(default)]
     pub touch_group_id: Option<u64>,
@@ -682,6 +688,12 @@ pub struct TouchHoldChartNote {
     pub is_break: bool,
     #[serde(rename = "isEX", default)]
     pub is_ex: bool,
+    #[serde(default)]
+    pub source_group_id: Option<u64>,
+    #[serde(default)]
+    pub source_group_index: Option<u64>,
+    #[serde(default)]
+    pub source_group_size: Option<u64>,
     pub touch_queue_index: u64,
     #[serde(default)]
     pub touch_group_id: Option<u64>,
@@ -934,6 +946,8 @@ pub struct HoldNote {
     pub head_diff: Duration,
     pub head_grade: JudgeGrade,
     pub player_release_time: Duration,
+    #[serde(default)]
+    pub release_ignore_time: Duration,
     #[serde(default)]
     pub is_classic: bool,
     #[serde(default)]

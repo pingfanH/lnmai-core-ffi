@@ -33,6 +33,8 @@ Current runtime score/input notes:
 
 - `GameState` no longer exposes a core touch-mode flag; desktop-style outer-button-to-touch mapping belongs in the host input layer before calling the core
 - touch, touch-hold body, and slide-body runtime input should be supplied as sensor input
+- lowered touch and touch-hold chart mirrors preserve `sourceGroupId` / `sourceGroupIndex` / `sourceGroupSize` so typed Rust round-trips keep shared-group semantics
+- `HoldNote.releaseIgnoreTime` is serialized separately from scored `playerReleaseTime`; Rust mirrors default missing older JSON to `0`
 - `GameState.noteFastLateDisplay` and `GameState.breakFastLateDisplay` mirror the core fast/late counter policy
 - `ScoreState.dxScore` mirrors the core loss-delta field; use `ScoreState::dx_score_remaining()` on the Rust mirror for achieved DX score
 - `ScoreState::combo_state()` derives AP+/AP/FC+/FC from judge-count categories, matching the core result semantics

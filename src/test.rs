@@ -466,3 +466,86 @@ fn game_state_touch_hold_body_groups_roundtrip() {
     assert_eq!(encoded["touchGroupStates"], touch_group_states);
     assert_eq!(encoded["touchHoldGroupStates"], touch_hold_body_groups);
 }
+
+#[test]
+fn hold_note_release_ignore_time_defaults_for_older_state_json() {
+    let hold_json = json!({
+        "params": {
+            "judgeTiming": 0,
+            "judgeOffset": 0,
+            "isBreak": false,
+            "isEX": false,
+            "noteIndex": 77
+        },
+        "start": { "button": { "zone": "K1" } },
+        "state": "BodyReleased",
+        "length": 800000,
+        "buttonQueueIndex": 0,
+        "headDiff": 0,
+        "headGrade": "Perfect",
+        "playerReleaseTime": 16000,
+        "isClassic": false,
+        "isTouchHold": false,
+        "touchQueueIndex": 0,
+        "touchGroupSize": 1,
+        "touchHoldGroupSize": 1,
+        "touchHoldGroupTriggered": false
+    });
+
+    let decoded: HoldNote = serde_json::from_value(hold_json).unwrap();
+    assert_eq!(decoded.release_ignore_time, 0);
+
+    let encoded = serde_json::to_value(decoded).unwrap();
+    assert_eq!(encoded["releaseIgnoreTime"], json!(0));
+}
+
+#[test]
+fn lowered_touch_source_groups_roundtrip_through_typed_chart_notes() {
+    let touch_json = json!({
+        "timing": 0,
+        "sensorPos": "A1",
+        "isBreak": false,
+        "sourceGroupId": 10,
+        "sourceGroupIndex": 1,
+        "sourceGroupSize": 3,
+        "touchQueueIndex": 2,
+        "touchGroupId": 4,
+        "touchGroupSize": 3,
+        "noteIndex": 101
+    });
+    let touch: TouchChartNote = serde_json::from_value(touch_json).unwrap();
+    assert_eq!(touch.source_group_id, Some(10));
+    assert_eq!(touch.source_group_index, Some(1));
+    assert_eq!(touch.source_group_size, Some(3));
+
+    let encoded_touch = serde_json::to_value(touch).unwrap();
+    assert_eq!(encoded_touch["sourceGroupId"], json!(10));
+    assert_eq!(encoded_touch["sourceGroupIndex"], json!(1));
+    assert_eq!(encoded_touch["sourceGroupSize"], json!(3));
+
+    let touch_hold_json = json!({
+        "timing": 0,
+        "sensorPos": "A2",
+        "length": 500000,
+        "isBreak": false,
+        "isEX": false,
+        "sourceGroupId": 20,
+        "sourceGroupIndex": 0,
+        "sourceGroupSize": 2,
+        "touchQueueIndex": 1,
+        "touchGroupId": 8,
+        "touchGroupSize": 2,
+        "touchHoldGroupId": 9,
+        "touchHoldGroupSize": 2,
+        "noteIndex": 102
+    });
+    let touch_hold: TouchHoldChartNote = serde_json::from_value(touch_hold_json).unwrap();
+    assert_eq!(touch_hold.source_group_id, Some(20));
+    assert_eq!(touch_hold.source_group_index, Some(0));
+    assert_eq!(touch_hold.source_group_size, Some(2));
+
+    let encoded_touch_hold = serde_json::to_value(touch_hold).unwrap();
+    assert_eq!(encoded_touch_hold["sourceGroupId"], json!(20));
+    assert_eq!(encoded_touch_hold["sourceGroupIndex"], json!(0));
+    assert_eq!(encoded_touch_hold["sourceGroupSize"], json!(2));
+}
