@@ -4,6 +4,10 @@ use std::collections::BTreeMap;
 pub type TimePoint = i64;
 pub type Duration = i64;
 
+fn default_one_u64() -> u64 {
+    1
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FfiErrorInfo {
     pub code: String,
@@ -576,6 +580,8 @@ pub struct NormalizedSlide {
     pub source_group_index: Option<u64>,
     #[serde(default)]
     pub source_group_size: Option<u64>,
+    #[serde(default = "default_one_u64")]
+    pub multiple: u64,
     pub note_index: u64,
     pub simai_shape: SlideShape,
 }
@@ -744,6 +750,8 @@ pub struct SlideChartNote {
     pub is_break: bool,
     #[serde(rename = "isEX", default)]
     pub is_ex: bool,
+    #[serde(default = "default_one_u64")]
+    pub multiple: u64,
     /// Shared logical slide identity linking lowered head/body objects.
     #[serde(default)]
     pub logical_slide_id: u64,
@@ -1036,6 +1044,8 @@ pub struct SlideNote {
     pub track_count: u64,
     #[serde(default)]
     pub is_checkable: bool,
+    #[serde(default = "default_one_u64")]
+    pub multiple: u64,
     pub judge_queues: Vec<Vec<SlideArea>>,
 }
 
@@ -1213,6 +1223,8 @@ pub struct JudgeEvent {
     pub note_index: u64,
     #[serde(default)]
     pub is_break: bool,
+    #[serde(default = "default_one_u64")]
+    pub multiple: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
