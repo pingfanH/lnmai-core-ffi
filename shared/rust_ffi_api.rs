@@ -1,22 +1,48 @@
 use crate::raw;
 use crate::session::{LnmaiError, Result};
 use crate::types;
-use lean_sys::{lean_object, lean_string_cstr};
+use lean_sys::{lean_io_result_is_error, lean_io_result_take_value, lean_object, lean_string_cstr};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::ffi::{CStr, CString};
 
-fn mk_lean_string(content: &str) -> *mut lean_object {
-    let c = CString::new(content).expect("content contains interior NUL");
-    unsafe { raw::lean_mk_string(c.as_ptr()) }
+fn ffi_error(message: impl Into<String>) -> LnmaiError {
+    LnmaiError { json: message.into() }
 }
 
-fn into_string(result: *mut lean_object) -> String {
+fn mk_lean_string(content: &str) -> Result<*mut lean_object> {
+    let c = CString::new(content)
+        .map_err(|_| ffi_error("FFI string input contains an interior NUL byte"))?;
+    Ok(unsafe { raw::lean_mk_string(c.as_ptr()) })
+}
+
+fn into_string(result: *mut lean_object) -> Result<String> {
+    if result.is_null() {
+        return Err(ffi_error("Lean FFI returned a null string object"));
+    }
     unsafe {
         let ptr = lean_string_cstr(result);
         let value = CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned();
         lean_sys::lean_dec_ref(result);
-        value
+        Ok(value)
+    }
+}
+
+fn into_io_string(result: *mut lean_object) -> Result<String> {
+    if result.is_null() {
+        return Err(ffi_error("Lean FFI returned a null IO result object"));
+    }
+    unsafe {
+        if lean_io_result_is_error(result) {
+            lean_sys::lean_io_result_show_error(result);
+            lean_sys::lean_dec_ref(result);
+            return Err(ffi_error("Lean FFI returned an IO error"));
+        }
+        let value_obj = lean_io_result_take_value(result);
+        let ptr = lean_string_cstr(value_obj);
+        let value = CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned();
+        lean_sys::lean_dec_ref(value_obj);
+        Ok(value)
     }
 }
 
@@ -35,8 +61,10 @@ fn call_parse<T: DeserializeOwned>(
     level_index: u32,
     f: unsafe extern "C" fn(*mut lean_object, u32) -> *mut lean_object,
 ) -> Result<T> {
-    let content_obj = mk_lean_string(content);
-    let json = unsafe { into_string(f(content_obj, level_index)) };
+    let content_obj = mk_lean_string(content)?;
+    let result = unsafe { f(content_obj, level_index) };
+    unsafe { lean_sys::lean_dec_ref(content_obj) };
+    let json = into_string(result)?;
     decode_envelope(json)
 }
 
@@ -46,8 +74,15 @@ fn call_json_input<I: Serialize, O: DeserializeOwned>(
 ) -> Result<O> {
     let input_json = serde_json::to_string(input)
         .map_err(|err| LnmaiError { json: err.to_string() })?;
-    let input_obj = mk_lean_string(&input_json);
-    let json = unsafe { into_string(f(input_obj)) };
+    let input_obj = mk_lean_string(&input_json)?;
+    let result = unsafe { f(input_obj) };
+    unsafe { lean_sys::lean_dec_ref(input_obj) };
+    let json = into_string(result)?;
+    decode_envelope(json)
+}
+
+pub fn ffi_version() -> Result<types::FfiVersion> {
+    let json = unsafe { into_io_string(raw::lnmai_ffi_version_json())? };
     decode_envelope(json)
 }
 
@@ -109,8 +144,13 @@ pub fn step_game_state(
         .map_err(|err| LnmaiError { json: err.to_string() })?;
     let batch_json = serde_json::to_string(batch)
         .map_err(|err| LnmaiError { json: err.to_string() })?;
-    let state_obj = mk_lean_string(&state_json);
-    let batch_obj = mk_lean_string(&batch_json);
-    let json = unsafe { into_string(raw::lnmai_step_game_state_json(state_obj, batch_obj)) };
+    let state_obj = mk_lean_string(&state_json)?;
+    let batch_obj = mk_lean_string(&batch_json)?;
+    let result = unsafe { raw::lnmai_step_game_state_json(state_obj, batch_obj) };
+    unsafe {
+        lean_sys::lean_dec_ref(state_obj);
+        lean_sys::lean_dec_ref(batch_obj);
+    }
+    let json = into_string(result)?;
     decode_envelope(json)
 }

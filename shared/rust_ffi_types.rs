@@ -28,6 +28,13 @@ pub struct FfiEnvelope<T = serde_json::Value> {
 
 pub type FfiResult = FfiEnvelope<serde_json::Value>;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FfiVersion {
+    pub abi_version: u64,
+    pub schema: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum JudgeGrade {

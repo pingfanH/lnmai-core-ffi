@@ -3,8 +3,9 @@ use std::marker::PhantomData;
 
 use crate::raw;
 use crate::types;
-use lean_sys::{lean_io_result_take_value, lean_string_cstr};
+use lean_sys::{lean_io_result_is_error, lean_io_result_take_value, lean_string_cstr};
 use serde::de::DeserializeOwned;
+use serde_json::Value;
 
 pub struct Empty;
 pub struct Loaded;
@@ -38,46 +39,69 @@ pub struct LnmaiError {
 pub type Result<T> = std::result::Result<T, LnmaiError>;
 
 pub struct Session<State> {
-    handle: u64,
+    handle: Option<u64>,
     _state: PhantomData<State>,
 }
 
 impl<State> Session<State> {
     pub fn handle(&self) -> u64 {
+        self.handle.expect("session handle has already been consumed")
+    }
+
+    fn new(handle: u64) -> Self {
+        Self {
+            handle: Some(handle),
+            _state: PhantomData,
+        }
+    }
+
+    fn take_handle(&mut self) -> u64 {
         self.handle
+            .take()
+            .expect("session handle has already been consumed")
     }
 }
 
-fn into_string(result: *mut lean_sys::lean_object) -> String {
+fn ffi_error(message: impl Into<String>) -> LnmaiError {
+    LnmaiError { json: message.into() }
+}
+
+fn into_string(result: *mut lean_sys::lean_object) -> Result<String> {
+    if result.is_null() {
+        return Err(ffi_error("Lean FFI returned a null IO result object"));
+    }
     unsafe {
+        if lean_io_result_is_error(result) {
+            lean_sys::lean_io_result_show_error(result);
+            lean_sys::lean_dec_ref(result);
+            return Err(ffi_error("Lean FFI returned an IO error"));
+        }
         let value_obj = lean_io_result_take_value(result);
         let ptr = lean_string_cstr(value_obj);
         let value = CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned();
         lean_sys::lean_dec_ref(value_obj);
-        value
+        Ok(value)
     }
 }
 
-fn mk_lean_string(content: &str) -> *mut lean_sys::lean_object {
-    let c = CString::new(content).expect("content contains interior NUL");
-    unsafe { raw::lean_mk_string(c.as_ptr()) }
+fn mk_lean_string(content: &str) -> Result<*mut lean_sys::lean_object> {
+    let c = CString::new(content)
+        .map_err(|_| ffi_error("FFI string input contains an interior NUL byte"))?;
+    Ok(unsafe { raw::lean_mk_string(c.as_ptr()) })
+}
+
+fn decode_raw_envelope(json: &str) -> Option<types::FfiEnvelope<Value>> {
+    serde_json::from_str(json).ok()
 }
 
 fn is_ok(json: &str) -> bool {
-    json.contains("\"ok\":true")
+    decode_raw_envelope(json).is_some_and(|envelope| envelope.ok)
 }
 
-fn extract_handle(json: &str) -> Option<u64> {
-    let needle = "\"handle\":";
-    let start = json.find(needle)? + needle.len();
-    let rest = json[start..].trim_start();
-    let rest = if let Some(stripped) = rest.strip_prefix('"') {
-        stripped
-    } else {
-        rest
-    };
-    let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
-    digits.parse().ok()
+fn handle_from_value(value: &Value) -> Option<u64> {
+    value
+        .get("handle")
+        .and_then(|handle| handle.as_u64().or_else(|| handle.as_str()?.parse().ok()))
 }
 
 fn ok_or_error(json: String) -> Result<FfiEnvelope> {
@@ -94,69 +118,87 @@ pub unsafe fn initialize_runtime() -> std::result::Result<(), ()> {
 
 impl Session<Empty> {
     pub fn create() -> Result<Self> {
-        let json = unsafe { into_string(raw::lnmai_create_empty_session_handle()) };
-        if !is_ok(&json) {
+        let json = unsafe { into_string(raw::lnmai_create_empty_session_handle())? };
+        let envelope: types::FfiEnvelope<Value> =
+            serde_json::from_str(&json).map_err(|_| LnmaiError { json: json.clone() })?;
+        if !envelope.ok {
             return Err(LnmaiError { json });
         }
-        let handle = serde_json::from_str::<types::FfiEnvelope<types::SessionState>>(&json)
-            .ok()
-            .and_then(|envelope| envelope.result.map(|payload| payload.handle))
-            .or_else(|| extract_handle(&json))
+        let handle = envelope
+            .result
+            .as_ref()
+            .and_then(handle_from_value)
             .ok_or_else(|| LnmaiError { json: json.clone() })?;
-        Ok(Self { handle, _state: PhantomData })
+        Ok(Self::new(handle))
     }
 
-    pub fn load_chart_text(self, content: &str, level_index: u32) -> Result<(Session<Loaded>, FfiEnvelope)> {
-        let content_obj = mk_lean_string(content);
-        let json = unsafe { into_string(raw::lnmai_load_chart_into_session_from_text(self.handle, content_obj, level_index)) };
+    pub fn load_chart_text(mut self, content: &str, level_index: u32) -> Result<(Session<Loaded>, FfiEnvelope)> {
+        let handle = self.handle();
+        let content_obj = mk_lean_string(content)?;
+        let result = unsafe { raw::lnmai_load_chart_into_session_from_text(handle, content_obj, level_index) };
+        unsafe { lean_sys::lean_dec_ref(content_obj) };
+        let json = into_string(result)?;
         let envelope = ok_or_error(json)?;
-        Ok((Session { handle: self.handle, _state: PhantomData }, envelope))
+        let handle = self.take_handle();
+        Ok((Session::new(handle), envelope))
     }
 
-    pub fn load_chart_json(self, chart_spec_json: &str) -> Result<(Session<Loaded>, FfiEnvelope)> {
-        let chart_obj = mk_lean_string(chart_spec_json);
-        let json = unsafe { into_string(raw::lnmai_load_chart_into_session_from_json(self.handle, chart_obj)) };
+    pub fn load_chart_json(mut self, chart_spec_json: &str) -> Result<(Session<Loaded>, FfiEnvelope)> {
+        let handle = self.handle();
+        let chart_obj = mk_lean_string(chart_spec_json)?;
+        let result = unsafe { raw::lnmai_load_chart_into_session_from_json(handle, chart_obj) };
+        unsafe { lean_sys::lean_dec_ref(chart_obj) };
+        let json = into_string(result)?;
         let envelope = ok_or_error(json)?;
-        Ok((Session { handle: self.handle, _state: PhantomData }, envelope))
+        let handle = self.take_handle();
+        Ok((Session::new(handle), envelope))
     }
 
-    pub fn free(self) -> Result<FfiEnvelope> {
-        let json = unsafe { into_string(raw::lnmai_free_game_state_handle(self.handle)) };
+    pub fn free(mut self) -> Result<FfiEnvelope> {
+        let handle = self.take_handle();
+        let json = unsafe { into_string(raw::lnmai_free_game_state_handle(handle))? };
         ok_or_error(json)
     }
 }
 
 impl Session<Loaded> {
     pub fn get_lowered_chart_json(&self) -> Result<FfiEnvelope> {
-        let json = unsafe { into_string(raw::lnmai_get_lowered_chart_json_by_handle(self.handle)) };
+        let json = unsafe { into_string(raw::lnmai_get_lowered_chart_json_by_handle(self.handle()))? };
         ok_or_error(json)
     }
 
     pub fn advance_frame_light(&mut self, batch_json: &str) -> Result<FfiEnvelope> {
-        let batch_obj = mk_lean_string(batch_json);
-        let json = unsafe { into_string(raw::lnmai_step_game_state_handle_light(self.handle, batch_obj)) };
+        let batch_obj = mk_lean_string(batch_json)?;
+        let result = unsafe { raw::lnmai_step_game_state_handle_light(self.handle(), batch_obj) };
+        unsafe { lean_sys::lean_dec_ref(batch_obj) };
+        let json = into_string(result)?;
         ok_or_error(json)
     }
 
     pub fn advance_frame_full(&mut self, batch_json: &str) -> Result<FfiEnvelope> {
-        let batch_obj = mk_lean_string(batch_json);
-        let json = unsafe { into_string(raw::lnmai_step_game_state_handle(self.handle, batch_obj)) };
+        let batch_obj = mk_lean_string(batch_json)?;
+        let result = unsafe { raw::lnmai_step_game_state_handle(self.handle(), batch_obj) };
+        unsafe { lean_sys::lean_dec_ref(batch_obj) };
+        let json = into_string(result)?;
         ok_or_error(json)
     }
 
     pub fn get_state_json(&self) -> Result<FfiEnvelope> {
-        let json = unsafe { into_string(raw::lnmai_get_game_state_json_by_handle(self.handle)) };
+        let json = unsafe { into_string(raw::lnmai_get_game_state_json_by_handle(self.handle()))? };
         ok_or_error(json)
     }
 
-    pub fn unload_chart(self) -> Result<(Session<Empty>, FfiEnvelope)> {
-        let json = unsafe { into_string(raw::lnmai_unload_chart_from_session(self.handle)) };
+    pub fn unload_chart(mut self) -> Result<(Session<Empty>, FfiEnvelope)> {
+        let handle = self.handle();
+        let json = unsafe { into_string(raw::lnmai_unload_chart_from_session(handle))? };
         let envelope = ok_or_error(json)?;
-        Ok((Session { handle: self.handle, _state: PhantomData }, envelope))
+        let handle = self.take_handle();
+        Ok((Session::new(handle), envelope))
     }
 
-    pub fn free(self) -> Result<FfiEnvelope> {
-        let json = unsafe { into_string(raw::lnmai_free_game_state_handle(self.handle)) };
+    pub fn free(mut self) -> Result<FfiEnvelope> {
+        let handle = self.take_handle();
+        let json = unsafe { into_string(raw::lnmai_free_game_state_handle(handle))? };
         ok_or_error(json)
     }
 }

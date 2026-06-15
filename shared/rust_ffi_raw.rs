@@ -10,6 +10,8 @@ unsafe extern "C" {
     pub fn initialize_lnmai_x2dcore_LnmaiCore(builtin: u8) -> *mut lean_object;
     pub fn initialize_lnmai_x2dcore_LnmaiCore_FFI(builtin: u8) -> *mut lean_object;
 
+    pub fn lnmai_ffi_version_json() -> *mut lean_object;
+
     pub fn lnmai_parse_frontend_chart_json(content: *mut lean_object, level_index: u32) -> *mut lean_object;
     pub fn lnmai_parse_frontend_semantic_chart_json(content: *mut lean_object, level_index: u32) -> *mut lean_object;
     pub fn lnmai_parse_frontend_inspection_chart_json(content: *mut lean_object, level_index: u32) -> *mut lean_object;

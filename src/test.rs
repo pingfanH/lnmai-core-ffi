@@ -38,6 +38,7 @@ fn call_string_ffi(f: impl FnOnce(*mut lean_object) -> *mut lean_object, input: 
     let c = CString::new(input).unwrap();
     let content = unsafe { lean_mk_string(c.as_ptr()) };
     let result = f(content);
+    unsafe { lean_sys::lean_dec_ref(content) };
     unsafe {
         let ptr = lean_string_cstr(result);
         let value = CStr::from_ptr(ptr as *const i8)
@@ -46,6 +47,16 @@ fn call_string_ffi(f: impl FnOnce(*mut lean_object) -> *mut lean_object, input: 
         lean_sys::lean_dec_ref(result);
         value
     }
+}
+
+#[test]
+fn ffi_version_roundtrips() {
+    let _guard = test_guard();
+    ensure_runtime();
+
+    let version = api::ffi_version().unwrap();
+    assert_eq!(version.abi_version, 1);
+    assert_eq!(version.schema, "lnmai-core-ffi-json");
 }
 
 #[test]
