@@ -51,16 +51,19 @@ pub fn build(path: PathBuf) {
         resolved.lean_toolchain_lib_dir.display()
     );
     println!("cargo:rustc-link-arg=@{}", linker_rsp_path.display());
-    println!("cargo:rustc-link-arg=-Wl,-syslibroot");
-    fn sdk_path() -> String {
-        let output = Command::new("xcrun")
-            .args(["--sdk", "macosx", "--show-sdk-path"])
-            .output()
-            .expect("failed to query sdk path");
-
-        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    if cfg!(target_os = "macos") {
+        println!("cargo:rustc-link-arg=-Wl,-syslibroot");
+        println!("cargo:rustc-link-arg={}", sdk_path());
     }
-    println!("cargo:rustc-link-arg={}", sdk_path());
+}
+
+fn sdk_path() -> String {
+    let output = Command::new("xcrun")
+        .args(["--sdk", "macosx", "--show-sdk-path"])
+        .output()
+        .expect("failed to query sdk path");
+
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
 }
 
 fn run_lake_build(lean_project: &Path) {
