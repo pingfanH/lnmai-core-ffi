@@ -94,6 +94,7 @@ fn build_link_rsp(
 ) -> String {
     let mut out = String::new();
     let mut index = 0;
+    let mut saw_uv = false;
     while index < lake_args.len() {
         let arg = &lake_args[index];
 
@@ -154,6 +155,7 @@ fn build_link_rsp(
                     }
                 }
                 "uv" => {
+                    saw_uv = true;
                     if let Some(path) = &resolved.uv {
                         out.push_str(&quote_arg(dynamic_linker_switch()));
                         out.push('\n');
@@ -176,6 +178,15 @@ fn build_link_rsp(
         out.push_str(&quote_arg(arg));
         out.push('\n');
         index += 1;
+    }
+
+    if cfg!(target_os = "linux") && saw_uv {
+        // On recent glibc, pthread_atfork is provided through libc's linker
+        // script via libc_nonshared.a. Re-emitting -lc after libuv keeps
+        // ld.bfd from missing that symbol when Rust's earlier -lc has
+        // already been scanned.
+        out.push_str(&quote_arg("-lc"));
+        out.push('\n');
     }
 
     out
