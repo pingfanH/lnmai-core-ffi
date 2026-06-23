@@ -52,6 +52,9 @@ pub fn main() {
         resolved.lean_toolchain_lib_dir.display()
     );
     println!("cargo:rustc-link-arg=@{}", linker_rsp_path.display());
+    if cfg!(target_os = "linux") {
+        println!("cargo:rustc-link-arg=-lc");
+    }
     if cfg!(target_os = "macos") {
         println!("cargo:rustc-link-arg=-Wl,-syslibroot");
         println!("cargo:rustc-link-arg={}", sdk_path());
