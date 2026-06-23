@@ -69,7 +69,7 @@ fn sdk_path() -> String {
 
 fn run_lake_build(lean_project: &Path) {
     let status = Command::new("lake")
-        .args(["build", "LnmaiCore", "LnmaiCore.FFI"])
+        .args(["build", "lnmai-core", "+LnmaiCore.FFI:c.o"])
         .current_dir(lean_project)
         .status()
         .expect("failed to invoke lake");

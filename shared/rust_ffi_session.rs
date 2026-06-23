@@ -135,8 +135,8 @@ impl Session<Empty> {
     pub fn load_chart_text(mut self, content: &str, level_index: u32) -> Result<(Session<Loaded>, FfiEnvelope)> {
         let handle = self.handle();
         let content_obj = mk_lean_string(content)?;
+        // Exported Lean functions consume owned Lean object arguments.
         let result = unsafe { raw::lnmai_load_chart_into_session_from_text(handle, content_obj, level_index) };
-        unsafe { lean_sys::lean_dec_ref(content_obj) };
         let json = into_string(result)?;
         let envelope = ok_or_error(json)?;
         let handle = self.take_handle();
@@ -146,8 +146,8 @@ impl Session<Empty> {
     pub fn load_chart_json(mut self, chart_spec_json: &str) -> Result<(Session<Loaded>, FfiEnvelope)> {
         let handle = self.handle();
         let chart_obj = mk_lean_string(chart_spec_json)?;
+        // Exported Lean functions consume owned Lean object arguments.
         let result = unsafe { raw::lnmai_load_chart_into_session_from_json(handle, chart_obj) };
-        unsafe { lean_sys::lean_dec_ref(chart_obj) };
         let json = into_string(result)?;
         let envelope = ok_or_error(json)?;
         let handle = self.take_handle();
@@ -169,16 +169,16 @@ impl Session<Loaded> {
 
     pub fn advance_frame_light(&mut self, batch_json: &str) -> Result<FfiEnvelope> {
         let batch_obj = mk_lean_string(batch_json)?;
+        // Exported Lean functions consume owned Lean object arguments.
         let result = unsafe { raw::lnmai_step_game_state_handle_light(self.handle(), batch_obj) };
-        unsafe { lean_sys::lean_dec_ref(batch_obj) };
         let json = into_string(result)?;
         ok_or_error(json)
     }
 
     pub fn advance_frame_full(&mut self, batch_json: &str) -> Result<FfiEnvelope> {
         let batch_obj = mk_lean_string(batch_json)?;
+        // Exported Lean functions consume owned Lean object arguments.
         let result = unsafe { raw::lnmai_step_game_state_handle(self.handle(), batch_obj) };
-        unsafe { lean_sys::lean_dec_ref(batch_obj) };
         let json = into_string(result)?;
         ok_or_error(json)
     }
