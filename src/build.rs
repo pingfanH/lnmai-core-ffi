@@ -67,6 +67,15 @@ fn sdk_path() -> String {
 }
 
 fn run_lake_build(lean_project: &Path) {
+    let cache_status = Command::new("lake")
+        .args(["exe", "cache", "get"])
+        .current_dir(lean_project)
+        .status()
+        .expect("failed to invoke lake exe cache get");
+    if !cache_status.success() {
+        panic!("lake exe cache get failed with status {cache_status}");
+    }
+
     for target in [
         "LnmaiCore.Proofs.Runtime:c.o",
         "LnmaiCore.FFI:c.o",
