@@ -51,19 +51,31 @@ pub fn build(path: PathBuf) {
         resolved.lean_toolchain_lib_dir.display()
     );
     println!("cargo:rustc-link-arg=@{}", linker_rsp_path.display());
-    println!("cargo:rustc-link-arg=-Wl,-syslibroot");
-    fn sdk_path() -> String {
-        let output = Command::new("xcrun")
-            .args(["--sdk", "macosx", "--show-sdk-path"])
-            .output()
-            .expect("failed to query sdk path");
-
-        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    if cfg!(target_os = "macos") {
+        println!("cargo:rustc-link-arg=-Wl,-syslibroot");
+        println!("cargo:rustc-link-arg={}", sdk_path());
     }
-    println!("cargo:rustc-link-arg={}", sdk_path());
+}
+
+fn sdk_path() -> String {
+    let output = Command::new("xcrun")
+        .args(["--sdk", "macosx", "--show-sdk-path"])
+        .output()
+        .expect("failed to query sdk path");
+
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
 }
 
 fn run_lake_build(lean_project: &Path) {
+    let cache_status = Command::new("lake")
+        .args(["exe", "cache", "get"])
+        .current_dir(lean_project)
+        .status()
+        .expect("failed to invoke lake exe cache get");
+    if !cache_status.success() {
+        panic!("lake exe cache get failed with status {cache_status}");
+    }
+
     for target in [
         "LnmaiCore.Proofs.Runtime:c.o",
         "LnmaiCore.FFI:c.o",
@@ -96,6 +108,7 @@ fn build_link_rsp(
 ) -> String {
     let mut out = String::new();
     let mut index = 0;
+    let mut saw_uv = false;
     while index < lake_args.len() {
         let arg = &lake_args[index];
 
@@ -156,6 +169,7 @@ fn build_link_rsp(
                     }
                 }
                 "uv" => {
+                    saw_uv = true;
                     if let Some(path) = &resolved.uv {
                         out.push_str(&quote_arg(dynamic_linker_switch()));
                         out.push('\n');
@@ -178,6 +192,15 @@ fn build_link_rsp(
         out.push_str(&quote_arg(arg));
         out.push('\n');
         index += 1;
+    }
+
+    if cfg!(target_os = "linux") && saw_uv {
+        // On recent glibc, pthread_atfork is provided through libc's linker
+        // script via libc_nonshared.a. Re-emitting -lc after libuv keeps
+        // ld.bfd from missing that symbol when Rust's earlier -lc has
+        // already been scanned.
+        out.push_str(&quote_arg("-lc"));
+        out.push('\n');
     }
 
     out

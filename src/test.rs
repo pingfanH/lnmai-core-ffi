@@ -37,8 +37,8 @@ fn legacy_touch_mode_json_key() -> String {
 fn call_string_ffi(f: impl FnOnce(*mut lean_object) -> *mut lean_object, input: &str) -> String {
     let c = CString::new(input).unwrap();
     let content = unsafe { lean_mk_string(c.as_ptr()) };
+    // Exported Lean functions consume owned Lean object arguments.
     let result = f(content);
-    unsafe { lean_sys::lean_dec_ref(content) };
     unsafe {
         let ptr = lean_string_cstr(result);
         let value = CStr::from_ptr(ptr as *const i8)
@@ -323,6 +323,90 @@ fn slide_judgment_parse_instance() {
             );
         }
     }
+
+    let (_empty, _unload_info) = loaded.unload_chart().unwrap();
+}
+
+#[test]
+fn prestart_slide_empty_frames_stay_dormant_through_session_ffi() {
+    let _guard = test_guard();
+    ensure_runtime();
+
+    let chart = ChartSpec {
+        taps: vec![],
+        holds: vec![],
+        touches: vec![],
+        touch_holds: vec![],
+        slide_heads: vec![SlideHeadChartNote {
+            timing: 360_000,
+            slot: OuterSlot::S1,
+            is_break: false,
+            is_ex: false,
+            logical_slide_id: 600,
+            note_index: 599,
+        }],
+        slides: vec![SlideChartNote {
+            head_timing: 360_000,
+            slot: OuterSlot::S1,
+            length: 500_000,
+            start_timing: 360_000,
+            slide_kind: RuntimeSlideKind::Single,
+            is_classic: false,
+            is_slide_no_head: false,
+            is_conn_slide: false,
+            parent_note_index: None,
+            is_group_head: false,
+            is_group_end: false,
+            parent_finished: false,
+            parent_pending_finish: false,
+            total_judge_queue_len: 1,
+            track_count: 1,
+            judge_at: Some(860_000),
+            is_break: false,
+            is_ex: false,
+            multiple: 1,
+            logical_slide_id: 600,
+            note_index: 600,
+            judge_queues: vec![vec![SlideAreaSpec {
+                target_areas: vec![SensorArea::A1],
+                policy: AreaPolicy::Or,
+                is_last: true,
+                is_skippable: true,
+                arrow_progress_when_on: 0,
+                arrow_progress_when_finished: 1,
+            }]],
+            debug_simai: None,
+        }],
+        slide_skipping: Some(true),
+    };
+    let chart_json = serde_json::to_string(&chart).unwrap();
+    let empty = Session::<Empty>::create().unwrap();
+    let (mut loaded, _load_info) = empty.load_chart_json(&chart_json).unwrap();
+
+    for current_time in [0, 16_667, 33_334, 50_001, 66_668, 83_335, 100_002] {
+        let batch = json!({ "currentTime": current_time, "events": [] }).to_string();
+        let result: RuntimeStepLightResult = loaded
+            .advance_frame_light(&batch)
+            .unwrap()
+            .decode_result()
+            .unwrap();
+        assert_eq!(result.current_time, current_time);
+        assert!(result.events.is_empty());
+        assert!(result.audio_commands.is_empty());
+        assert!(result.render_commands.is_empty());
+    }
+
+    let state: GameState = loaded.get_state_json().unwrap().decode_result().unwrap();
+    assert_eq!(state.current_time, 100_002);
+    assert_eq!(state.slides.len(), 1);
+
+    let slide = &state.slides[0];
+    assert!(matches!(slide.state, SlideState::Waiting));
+    assert!(!slide.is_checkable);
+    assert_eq!(slide.judge_queues.len(), 1);
+    assert_eq!(slide.judge_queues[0].len(), 1);
+    assert!(!slide.judge_queues[0][0].was_on);
+    assert!(!slide.judge_queues[0][0].was_off);
 
     let (_empty, _unload_info) = loaded.unload_chart().unwrap();
 }

@@ -62,8 +62,8 @@ fn call_parse<T: DeserializeOwned>(
     f: unsafe extern "C" fn(*mut lean_object, u32) -> *mut lean_object,
 ) -> Result<T> {
     let content_obj = mk_lean_string(content)?;
+    // Exported Lean functions consume owned Lean object arguments.
     let result = unsafe { f(content_obj, level_index) };
-    unsafe { lean_sys::lean_dec_ref(content_obj) };
     let json = into_string(result)?;
     decode_envelope(json)
 }
@@ -75,8 +75,8 @@ fn call_json_input<I: Serialize, O: DeserializeOwned>(
     let input_json = serde_json::to_string(input)
         .map_err(|err| LnmaiError { json: err.to_string() })?;
     let input_obj = mk_lean_string(&input_json)?;
+    // Exported Lean functions consume owned Lean object arguments.
     let result = unsafe { f(input_obj) };
-    unsafe { lean_sys::lean_dec_ref(input_obj) };
     let json = into_string(result)?;
     decode_envelope(json)
 }
@@ -146,11 +146,8 @@ pub fn step_game_state(
         .map_err(|err| LnmaiError { json: err.to_string() })?;
     let state_obj = mk_lean_string(&state_json)?;
     let batch_obj = mk_lean_string(&batch_json)?;
+    // Exported Lean functions consume owned Lean object arguments.
     let result = unsafe { raw::lnmai_step_game_state_json(state_obj, batch_obj) };
-    unsafe {
-        lean_sys::lean_dec_ref(state_obj);
-        lean_sys::lean_dec_ref(batch_obj);
-    }
     let json = into_string(result)?;
     decode_envelope(json)
 }
