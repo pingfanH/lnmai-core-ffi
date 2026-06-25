@@ -32,10 +32,10 @@ pub fn build(path: PathBuf) {
     let artifacts = PathBuf::from(env::var("LNMAI_CORE_ARTIFACTS").expect(
         "LNMAI_CORE_ARTIFACTS must be set by the Nix build; run through nix build/nix run",
     ));
-    let lake_rsp_path = artifacts.join("bin/lnmai-core.rsp");
+    let lake_rsp_path = artifacts.join("share/lnmai-core/ffi-link.rsp");
     if !lake_rsp_path.exists() {
         panic!(
-            "missing Nix-built Lean response file at {}; build lnmai-core .#ffi-artifacts first",
+            "missing sanitized Nix-built Lean response file at {}; build lnmai-core .#ffi-artifacts first",
             lake_rsp_path.display()
         );
     }
@@ -101,6 +101,11 @@ fn build_link_rsp(
             continue;
         }
 
+        if arg == "--sysroot" {
+            index += 2;
+            continue;
+        }
+
         if is_excluded_object(arg, lean_project) {
             index += 1;
             continue;
@@ -108,6 +113,10 @@ fn build_link_rsp(
 
         if arg == "-L" {
             let path = lake_args.get(index + 1).expect("-L without path");
+            if path.ends_with("/lib/glibc") {
+                index += 2;
+                continue;
+            }
             out.push_str(&quote_arg("-L"));
             out.push('\n');
             out.push_str(&quote_arg(path));
@@ -163,6 +172,8 @@ fn build_link_rsp(
                         out.push('\n');
                     }
                 }
+                "c" | "pthread_nonshared" | "dl" | "m" | "rt" | "pthread" => {}
+                ":ld.so" | "c_nonshared" => {}
                 _ => {
                     out.push_str(&quote_arg(arg));
                     out.push('\n');
