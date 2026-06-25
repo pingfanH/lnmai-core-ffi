@@ -66,11 +66,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782367601,
-        "narHash": "sha256-Pm0JVl7haruFUtTDUmj5LrcT3vKUQUSU/3ysVLxn52I=",
+        "lastModified": 1782379828,
+        "narHash": "sha256-/RUEMpihqzsQUujI7btZBroTeznXTLTO1u2mn/DYUVc=",
         "owner": "Neuron-Group",
         "repo": "lnmai-core",
-        "rev": "9194a9af4cb723efdd159f819441726e981ff5a6",
+        "rev": "0bc3dfa669065aa0d934b999e707656929d328b9",
         "type": "github"
       },
       "original": {
