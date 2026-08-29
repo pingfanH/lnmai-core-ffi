@@ -7,6 +7,7 @@ pub fn build(path: PathBuf) {
     let manifest_dir = path;
     let lean_project = manifest_dir.join("lnmai-core");
 
+    println!("cargo:rerun-if-env-changed=LNMAI_CORE_ARTIFACTS");
     println!(
         "cargo:rerun-if-changed={}",
         lean_project.join("lakefile.toml").display()
@@ -28,9 +29,17 @@ pub fn build(path: PathBuf) {
         lean_project.join("include/lnmai_session.h").display()
     );
 
-    run_lake_build(&lean_project);
+    let artifacts = PathBuf::from(env::var("LNMAI_CORE_ARTIFACTS").expect(
+        "LNMAI_CORE_ARTIFACTS must be set by the Nix build; run through nix build/nix run",
+    ));
+    let lake_rsp_path = artifacts.join("share/lnmai-core/ffi-link.rsp");
+    if !lake_rsp_path.exists() {
+        panic!(
+            "missing sanitized Nix-built Lean response file at {}; build lnmai-core .#ffi-artifacts first",
+            lake_rsp_path.display()
+        );
+    }
 
-    let lake_rsp_path = lean_project.join(".lake/build/bin/lnmai-core.rsp");
     println!("cargo:rerun-if-changed={}", lake_rsp_path.display());
     let lake_rsp =
         fs::read_to_string(&lake_rsp_path).expect("failed to read Lake link response file");
@@ -66,32 +75,6 @@ fn sdk_path() -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_string()
 }
 
-fn run_lake_build(lean_project: &Path) {
-    let cache_status = Command::new("lake")
-        .args(["exe", "cache", "get"])
-        .current_dir(lean_project)
-        .status()
-        .expect("failed to invoke lake exe cache get");
-    if !cache_status.success() {
-        panic!("lake exe cache get failed with status {cache_status}");
-    }
-
-    for target in [
-        "LnmaiCore.Proofs.Runtime:c.o",
-        "LnmaiCore.FFI:c.o",
-        "lnmai-core",
-    ] {
-        let status = Command::new("lake")
-            .args(["build", target])
-            .current_dir(lean_project)
-            .status()
-            .expect("failed to invoke lake");
-        if !status.success() {
-            panic!("lake build failed for {target} with status {status}");
-        }
-    }
-}
-
 fn parse_rsp(content: &str) -> Vec<String> {
     content
         .lines()
@@ -118,6 +101,11 @@ fn build_link_rsp(
             continue;
         }
 
+        if arg == "--sysroot" {
+            index += 2;
+            continue;
+        }
+
         if is_excluded_object(arg, lean_project) {
             index += 1;
             continue;
@@ -125,6 +113,10 @@ fn build_link_rsp(
 
         if arg == "-L" {
             let path = lake_args.get(index + 1).expect("-L without path");
+            if path.ends_with("/lib/glibc") {
+                index += 2;
+                continue;
+            }
             out.push_str(&quote_arg("-L"));
             out.push('\n');
             out.push_str(&quote_arg(path));
@@ -180,6 +172,8 @@ fn build_link_rsp(
                         out.push('\n');
                     }
                 }
+                "c" | "pthread_nonshared" | "dl" | "m" | "rt" | "pthread" => {}
+                ":ld.so" | "c_nonshared" => {}
                 _ => {
                     out.push_str(&quote_arg(arg));
                     out.push('\n');
