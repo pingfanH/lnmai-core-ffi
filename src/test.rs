@@ -412,6 +412,49 @@ fn prestart_slide_empty_frames_stay_dormant_through_session_ffi() {
 }
 
 #[test]
+fn light_step_returns_the_updated_score() {
+    let _guard = test_guard();
+    ensure_runtime();
+
+    let chart = ChartSpec {
+        taps: vec![TapChartNote {
+            timing: 0,
+            slot: OuterSlot::S1,
+            is_break: false,
+            is_ex: false,
+            button_queue_index: 0,
+            note_index: 0,
+        }],
+        holds: vec![],
+        touches: vec![],
+        touch_holds: vec![],
+        slide_heads: vec![],
+        slides: vec![],
+        slide_skipping: None,
+    };
+    let chart_json = serde_json::to_string(&chart).unwrap();
+    let empty = Session::<Empty>::create().unwrap();
+    let (mut loaded, _load_info) = empty.load_chart_json(&chart_json).unwrap();
+    let batch = json!({
+        "currentTime": 0,
+        "events": [{ "buttonClick": { "tp": 0, "zone": "K1" } }]
+    });
+
+    let result: RuntimeStepLightResult = loaded
+        .advance_frame_light(&batch.to_string())
+        .unwrap()
+        .decode_result()
+        .unwrap();
+
+    assert_eq!(result.score.combo, 1);
+    assert_eq!(result.score.earned_base, 500);
+    let state: GameState = loaded.get_state_json().unwrap().decode_result().unwrap();
+    assert_eq!(result.score, state.score);
+
+    let (_empty, _unload_info) = loaded.unload_chart().unwrap();
+}
+
+#[test]
 fn command_and_event_break_flags_roundtrip() {
     let event_json = r#"{
       "kind": "Tap",
