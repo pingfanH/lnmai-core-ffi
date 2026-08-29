@@ -29,21 +29,31 @@ pub fn build(path: PathBuf) {
         lean_project.join("include/lnmai_session.h").display()
     );
 
-    let artifacts = PathBuf::from(env::var("LNMAI_CORE_ARTIFACTS").expect(
-        "LNMAI_CORE_ARTIFACTS must be set by the Nix build; run through nix build/nix run",
-    ));
-    let lake_rsp_path = artifacts.join("share/lnmai-core/ffi-link.rsp");
-    if !lake_rsp_path.exists() {
-        panic!(
-            "missing sanitized Nix-built Lean response file at {}; build lnmai-core .#ffi-artifacts first",
-            lake_rsp_path.display()
-        );
-    }
-
-    println!("cargo:rerun-if-changed={}", lake_rsp_path.display());
-    let lake_rsp =
-        fs::read_to_string(&lake_rsp_path).expect("failed to read Lake link response file");
-    let lake_args = parse_rsp(&lake_rsp);
+    // Prefer Nix-built Lean artifacts when LNMAI_CORE_ARTIFACTS is set;
+    // otherwise fall back to a direct Lake build of the Lean project.
+    let lake_args = match env::var("LNMAI_CORE_ARTIFACTS") {
+        Ok(artifacts) => {
+            let path = PathBuf::from(artifacts).join("share/lnmai-core/ffi-link.rsp");
+            if !path.exists() {
+                panic!(
+                    "missing Nix-built Lean response file at {}; build lnmai-core .#ffi-artifacts first",
+                    path.display()
+                );
+            }
+            println!("cargo:rerun-if-changed={}", path.display());
+            let lake_rsp =
+                fs::read_to_string(&path).expect("failed to read Lake link response file");
+            parse_rsp(&lake_rsp)
+        }
+        Err(_) => {
+            run_lake_build(&lean_project);
+            let path = lean_project.join(".lake/build/bin/lnmai-core.rsp");
+            println!("cargo:rerun-if-changed={}", path.display());
+            let lake_rsp =
+                fs::read_to_string(&path).expect("failed to read Lake link response file");
+            parse_rsp(&lake_rsp)
+        }
+    };
 
     let resolved = resolve_system_libraries(&lake_args);
 
@@ -63,6 +73,26 @@ pub fn build(path: PathBuf) {
     if cfg!(target_os = "macos") {
         println!("cargo:rustc-link-arg=-Wl,-syslibroot");
         println!("cargo:rustc-link-arg={}", sdk_path());
+    }
+}
+
+fn run_lake_build(lean_project: &Path) {
+    let cache_status = Command::new("lake")
+        .args(["exe", "cache", "get"])
+        .current_dir(lean_project)
+        .status()
+        .expect("failed to invoke lake exe cache get");
+    if !cache_status.success() {
+        panic!("lake exe cache get failed with status {cache_status}");
+    }
+
+    let status = Command::new("lake")
+        .args(["build", "lnmai-core", "+LnmaiCore.FFI:c.o"])
+        .current_dir(lean_project)
+        .status()
+        .expect("failed to invoke lake");
+    if !status.success() {
+        panic!("lake build failed with status {status}");
     }
 }
 
